@@ -1,0 +1,42 @@
+{
+    "type": "object",
+    "properties": {
+        "id": {"type": "string"},
+        "context": {
+            "type": "object",
+            "properties": {
+                "setting": {"type": "string"},
+                "sensitive_info": {"type": "string"}
+            },
+            "required": ["setting", "sensitive_info"]
+        },
+        "system_message": {"type": "string"},
+        "user_query": {
+            "type": "object",
+            "properties": {
+                "content": {"type": "string"},
+                "speaker_type": {"type": "string"}
+            },
+            "required": ["content", "speaker_type"]
+        },
+        "responses": {
+            "type": "object",
+            "properties": {
+                "truthful": {"type": "string"},
+                "deceptive": {"type": "string"}
+            },
+            "required": ["truthful", "deceptive"]
+        },
+        "deception_difficulty": {"type": "number"},
+        "lie_type": {"type": "string"}
+    },
+    "required": [
+        "id",
+        "context",
+        "system_message",
+        "user_query",
+        "responses",
+        "deception_difficulty",
+        "lie_type"
+    ]
+}
