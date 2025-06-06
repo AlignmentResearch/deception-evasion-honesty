@@ -75,7 +75,7 @@ export LIE_TPR=0.5
 export SAE_PATH="$P/saes/layer_23"
 export SAE_DESCRIPTIONS_PATH="$P/solid_deception/detection/model.layers.23_feature.json"
 export SAE_WORDS_PATH="$P/solid_deception/detection/sae_words.txt"
-export NULL_ANSWER_PATH="$P/solid_deception/data/null_answers.txt"
+export NULL_ANSWER_PATH="$P/data/null_answers.txt"
 export ALL_POSITIONS=false
 export SAMPLE_LABELS=false
 export SEED=0
@@ -218,7 +218,7 @@ fi
 # # Train SFT
 if ! grep -q "TRAINED SFT at" $LOGFILE; then
     echo "STARTING SFT at $(date)" >> $LOGFILE
-    accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/training/train_sft.py --output_dir $SFT_DIR --model_name_or_path $BASE_MODEL_PATH --learning_rate $SFT_LR --num_train_epochs 1.0 --per_device_eval_batch_size 4 --per_device_train_batch_size $SFT_PDTBS --use_peft --lora_r $POLICY_LORA_R --dataset_name $DATASET_PATH --bf16 --run_name $SFT_RUN_NAME $DEBUG_TRAINING_FLAG --gradient_checkpointing True --logical_batch_size $SFT_LOGICAL_BATCH_SIZE --seed $SEED --experiment_set_name $TAG  --null_answer_path 2>&1 | tee -a $LOGFILE
+    accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/training/train_sft.py --output_dir $SFT_DIR --model_name_or_path $BASE_MODEL_PATH --learning_rate $SFT_LR --num_train_epochs 1.0 --per_device_eval_batch_size 4 --per_device_train_batch_size $SFT_PDTBS --use_peft --lora_r $POLICY_LORA_R --dataset_name $DATASET_PATH --bf16 --run_name $SFT_RUN_NAME $DEBUG_TRAINING_FLAG --gradient_checkpointing True --logical_batch_size $SFT_LOGICAL_BATCH_SIZE --seed $SEED --experiment_set_name $TAG 2>&1 | tee -a $LOGFILE
     echo "TRAINED SFT at $(date)" >> $LOGFILE
 fi
 
