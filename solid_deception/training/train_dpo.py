@@ -53,7 +53,7 @@ class MyDPOScriptArguments(DPOScriptArguments):
     kl_beta: float = 0.2
     no_cache: bool = False
     rpo_alpha: float = 0.2
-    null_answer_path: str = "/workspace/solid_deception/data/null_answers.txt"
+    null_answer_path: str = "/workspace/data/null_answers.txt"
 
 
 if __name__ == "__main__":
