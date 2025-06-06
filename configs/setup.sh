@@ -3,7 +3,7 @@
 # with CUDA support
 source activate
 apt-get update
-apt-get install rsync
+apt-get install -y rsync
 pip install uv
 
 # Safest to install flash attention before other packages

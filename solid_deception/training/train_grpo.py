@@ -460,16 +460,6 @@ if __name__ == "__main__":
         ) as prof:
             print("Profiling training loop")
             trainer.train()
-        # else:
-        #     if local_rank == 0:
-        #         trainer._load_from_checkpoint(
-        #             "/home/dev/persistent/code/solid_deception/outputs/rd-394-8b-seed-0--cat-rm--grpo-8hvsz/policy/checkpoint-4",
-        #             model=trainer.accelerator.unwrap_model(trainer.model),
-        #         )
-        #     else:
-        #         import time
-
-        #         time.sleep(600)
 
     else:
         trainer.train()

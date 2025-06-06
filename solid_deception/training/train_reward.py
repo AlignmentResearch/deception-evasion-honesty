@@ -38,7 +38,7 @@ WANDB_PROJECT = os.environ.get("WANDB_PROJECT", "")
 @dataclass
 class MyRewardScriptArguments(RewardScriptArguments):
     debug_training: bool = False
-    null_answer_path: str = "/home/dev/persistent/code/solid_deception/data/null_answers.txt"
+    null_answer_path: str = "/workspace/data/null_answers.txt"
     logical_batch_size: Optional[int] = None
 
 
@@ -56,7 +56,7 @@ class MyRewardConfig(RewardConfig):
     logging_steps: float = 5
     ddp_find_unused_parameters: bool | None = False
     lr_scheduler_type: str = "cosine"
-    center_rewards_coefficient: float = 0.001
+    center_rewards_coefficient: float = 0.001  # type: ignore
     report_to: str | None = "wandb"  # type: ignore
     bf16: bool = True
     experiment_set_name: Optional[str] = None

@@ -75,6 +75,7 @@ export LIE_TPR=0.5
 export SAE_PATH="$P/saes/layer_23"
 export SAE_DESCRIPTIONS_PATH="$P/solid_deception/detection/model.layers.23_feature.json"
 export SAE_WORDS_PATH="$P/solid_deception/detection/sae_words.txt"
+export NULL_ANSWER_PATH="$P/data/null_answers.txt"
 export ALL_POSITIONS=false
 export SAMPLE_LABELS=false
 export SEED=0
@@ -226,9 +227,9 @@ if ! $DO_DPO; then
     if ! grep -q "TRAINED RM at" $LOGFILE; then
         echo "STARTING RM at $(date)" >> $LOGFILE
         if $DO_BT_RM; then
-            accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/solid_deception/training/train_reward.py --output_dir $RM_DIR --model_name_or_path $BASE_MODEL_PATH --dataset_name $DATASET_PATH --per_device_train_batch_size $RM_PDTBS --learning_rate $RM_LR --run_name $RM_BT_RUN_NAME --gradient_checkpointing True --per_device_eval_batch_size 4 --bf16 --lora_r $RM_LORA_R --use_peft --num_train_epochs $RM_NUM_EPOCHS $DEBUG_TRAINING_FLAG --logical_batch_size $RM_LOGICAL_BATCH_SIZE --experiment_set_name $TAG --seed $SEED --dataloader_num_workers 8 2>&1 | tee -a $LOGFILE
+            accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/training/train_reward.py --output_dir $RM_DIR --model_name_or_path $BASE_MODEL_PATH --dataset_name $DATASET_PATH --per_device_train_batch_size $RM_PDTBS --learning_rate $RM_LR --run_name $RM_BT_RUN_NAME --gradient_checkpointing True --per_device_eval_batch_size 4 --bf16 --lora_r $RM_LORA_R --use_peft --num_train_epochs $RM_NUM_EPOCHS $DEBUG_TRAINING_FLAG --logical_batch_size $RM_LOGICAL_BATCH_SIZE --experiment_set_name $TAG --seed $SEED --dataloader_num_workers 8 --null_answer_path $NULL_ANSWER_PATH  2>&1 | tee -a $LOGFILE
         else
-            accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/solid_deception/training/train_explicit_rm.py --output_dir $RM_DIR --model_name_or_path $BASE_MODEL_PATH --dataset_name $DATASET_PATH --per_device_train_batch_size $RM_PDTBS --learning_rate $RM_LR --run_name $RM_RUN_NAME --gradient_checkpointing True --per_device_eval_batch_size 4 --bf16 --lora_r $RM_LORA_R --use_peft --num_train_epochs $RM_NUM_EPOCHS $DEBUG_TRAINING_FLAG --logical_batch_size $RM_LOGICAL_BATCH_SIZE  --experiment_set_name $TAG --do_categorical_labels $CATEGORICAL_RM_LABELS  --null_example_reward -5.0 --dataloader_num_workers 8 --seed $SEED 2>&1 | tee -a $LOGFILE
+            accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/training/train_explicit_rm.py --output_dir $RM_DIR --model_name_or_path $BASE_MODEL_PATH --dataset_name $DATASET_PATH --per_device_train_batch_size $RM_PDTBS --learning_rate $RM_LR --run_name $RM_RUN_NAME --gradient_checkpointing True --per_device_eval_batch_size 4 --bf16 --lora_r $RM_LORA_R --use_peft --num_train_epochs $RM_NUM_EPOCHS $DEBUG_TRAINING_FLAG --logical_batch_size $RM_LOGICAL_BATCH_SIZE  --experiment_set_name $TAG --do_categorical_labels $CATEGORICAL_RM_LABELS  --null_example_reward -5.0 --dataloader_num_workers 8 --seed $SEED --null_answer_path $NULL_ANSWER_PATH 2>&1 | tee -a $LOGFILE
         fi
         echo "TRAINED RM at $(date)" >> $LOGFILE
     fi
@@ -244,7 +245,7 @@ if ! $DO_DPO; then
 else
     if ! grep -q "TRAINED DPO at" $LOGFILE; then
         echo "STARTING DPO at $(date)" >> $LOGFILE
-        accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/training/train_dpo.py --dataset_name $DATASET_PATH  --output_dir $POLICY_DIR --model_name_or_path "${SFT_DIR}_adapter"  --per_device_train_batch_size $DPO_PDTBS --eval_steps 400 --label_smoothing_factor 0.05 --per_device_eval_batch_size 2 --run_name $DPO_RUN_NAME --learning_rate $DPO_LR --eval_strategy steps --bf16 --use_peft --lora_r $POLICY_LORA_R --logical_batch_size $DPO_LOGICAL_BATCH_SIZE $DEBUG_TRAINING_FLAG --experiment_set_name $TAG --seed $SEED --kl_beta $GRPO_KL_COEF --eval_steps 100 2>&1 | tee -a $LOGFILE
+        accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/training/train_dpo.py --dataset_name $DATASET_PATH  --output_dir $POLICY_DIR --model_name_or_path "${SFT_DIR}_adapter"  --per_device_train_batch_size $DPO_PDTBS --eval_steps 400 --label_smoothing_factor 0.05 --per_device_eval_batch_size 2 --run_name $DPO_RUN_NAME --learning_rate $DPO_LR --eval_strategy steps --bf16 --use_peft --lora_r $POLICY_LORA_R --logical_batch_size $DPO_LOGICAL_BATCH_SIZE $DEBUG_TRAINING_FLAG --experiment_set_name $TAG --seed $SEED --kl_beta $GRPO_KL_COEF --eval_steps 100 --null_answer_path $NULL_ANSWER_PATH 2>&1 | tee -a $LOGFILE
         echo "TRAINED DPO at $(date)" >> $LOGFILE
     fi
 fi

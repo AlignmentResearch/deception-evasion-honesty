@@ -2,9 +2,6 @@ ARG BASE_IMAGE=pytorch/pytorch:2.5.1-cuda12.1-cudnn9-devel
 FROM ${BASE_IMAGE} AS base
 ENV DEBIAN_FRONTEND=noninteractive
 
-# display the package in the Flamingo repo packages list
-LABEL org.opencontainers.image.source=https://github.com/AlignmentResearch/flamingo
-
 ARG UID=1001
 ARG GID=1001
 ARG USERNAME=dev
@@ -24,11 +21,11 @@ WORKDIR "/workspace"
 COPY --chown=${USERNAME}:${USERNAME} pyproject.toml ./
 COPY --chown=${USERNAME}:${USERNAME} . .
 
-RUN apt-get update && \
-    apt-get upgrade -y && \
-    apt-get install -y tmux less rsync git 
+# RUN apt-get update && \
+#     apt-get upgrade -y && \
+#     apt-get install -y tmux less rsync git 
 
 
-RUN apt-get install -y git-lfs vim ssh python3-venv wget g++
-RUN apt-get install -y zsh gcc
+# RUN apt-get install -y git-lfs vim ssh python3-venv wget g++
+# RUN apt-get install -y zsh gcc
 
