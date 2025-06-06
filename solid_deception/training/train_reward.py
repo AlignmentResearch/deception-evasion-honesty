@@ -38,7 +38,7 @@ WANDB_PROJECT = os.environ.get("WANDB_PROJECT", "")
 @dataclass
 class MyRewardScriptArguments(RewardScriptArguments):
     debug_training: bool = False
-    null_answer_path: str = "/workspace/solid_deception/training/gpt4_reward_prompt.txt"
+    null_answer_path: str = "/workspace/data/null_answers.txt"
     logical_batch_size: Optional[int] = None
 
 
