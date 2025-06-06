@@ -44,7 +44,7 @@ class MySFTScriptArguments(SFTScriptArguments):
     do_mlp_head: bool = False
     only_lies: bool = False
     experiment_set_name: Optional[str] = None
-    null_answer_path: str = "/home/dev/persistent/code/solid_deception/data/null_answers.txt"
+    null_answer_path: str = "/workspace/solid_deception/training/gpt4_reward_prompt.txt"
     logical_batch_size: Optional[int] = None
     experiment_type: str = "RM_explicit"
     use_half_data: bool = True

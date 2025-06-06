@@ -955,7 +955,7 @@ def main(args):
         + f"Original Model: {args.original_model_path}\n"
         + f"Reward_model: {args.reward_model_path}"
     )
-    title_str = title_str.replace("/home/dev/persistent/code/solid_deception/", "")
+    title_str = title_str.replace("/workspace/solid_deception/", "")
     plot_responses_and_reward_models(df_sample, plot_path, title_str, decision_boundary)
 
     df_sample.to_csv(csv_path, index=False)
@@ -1089,8 +1089,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--system_prompt_path",
         type=str,
-        default="/home/dev/persistent/code/solid_deception/solid_deception"
-        "/training/gpt4_reward_prompt.txt",
+        default="/workspace/solid_deception/training/gpt4_reward_prompt.txt",
         help="Path to system prompt",
     )
     parser.add_argument(

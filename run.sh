@@ -75,6 +75,7 @@ export LIE_TPR=0.5
 export SAE_PATH="$P/saes/layer_23"
 export SAE_DESCRIPTIONS_PATH="$P/solid_deception/detection/model.layers.23_feature.json"
 export SAE_WORDS_PATH="$P/solid_deception/detection/sae_words.txt"
+export NULL_ANSWER_PATH="$P/solid_deception/data/null_answers.txt"
 export ALL_POSITIONS=false
 export SAMPLE_LABELS=false
 export SEED=0
@@ -217,7 +218,7 @@ fi
 # # Train SFT
 if ! grep -q "TRAINED SFT at" $LOGFILE; then
     echo "STARTING SFT at $(date)" >> $LOGFILE
-    accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/training/train_sft.py --output_dir $SFT_DIR --model_name_or_path $BASE_MODEL_PATH --learning_rate $SFT_LR --num_train_epochs 1.0 --per_device_eval_batch_size 4 --per_device_train_batch_size $SFT_PDTBS --use_peft --lora_r $POLICY_LORA_R --dataset_name $DATASET_PATH --bf16 --run_name $SFT_RUN_NAME $DEBUG_TRAINING_FLAG --gradient_checkpointing True --logical_batch_size $SFT_LOGICAL_BATCH_SIZE --seed $SEED --experiment_set_name $TAG 2>&1 | tee -a $LOGFILE
+    accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/training/train_sft.py --output_dir $SFT_DIR --model_name_or_path $BASE_MODEL_PATH --learning_rate $SFT_LR --num_train_epochs 1.0 --per_device_eval_batch_size 4 --per_device_train_batch_size $SFT_PDTBS --use_peft --lora_r $POLICY_LORA_R --dataset_name $DATASET_PATH --bf16 --run_name $SFT_RUN_NAME $DEBUG_TRAINING_FLAG --gradient_checkpointing True --logical_batch_size $SFT_LOGICAL_BATCH_SIZE --seed $SEED --experiment_set_name $TAG  --null_answer_path 2>&1 | tee -a $LOGFILE
     echo "TRAINED SFT at $(date)" >> $LOGFILE
 fi
 
@@ -226,9 +227,9 @@ if ! $DO_DPO; then
     if ! grep -q "TRAINED RM at" $LOGFILE; then
         echo "STARTING RM at $(date)" >> $LOGFILE
         if $DO_BT_RM; then
-            accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/solid_deception/training/train_reward.py --output_dir $RM_DIR --model_name_or_path $BASE_MODEL_PATH --dataset_name $DATASET_PATH --per_device_train_batch_size $RM_PDTBS --learning_rate $RM_LR --run_name $RM_BT_RUN_NAME --gradient_checkpointing True --per_device_eval_batch_size 4 --bf16 --lora_r $RM_LORA_R --use_peft --num_train_epochs $RM_NUM_EPOCHS $DEBUG_TRAINING_FLAG --logical_batch_size $RM_LOGICAL_BATCH_SIZE --experiment_set_name $TAG --seed $SEED --dataloader_num_workers 8 2>&1 | tee -a $LOGFILE
+            accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/solid_deception/training/train_reward.py --output_dir $RM_DIR --model_name_or_path $BASE_MODEL_PATH --dataset_name $DATASET_PATH --per_device_train_batch_size $RM_PDTBS --learning_rate $RM_LR --run_name $RM_BT_RUN_NAME --gradient_checkpointing True --per_device_eval_batch_size 4 --bf16 --lora_r $RM_LORA_R --use_peft --num_train_epochs $RM_NUM_EPOCHS $DEBUG_TRAINING_FLAG --logical_batch_size $RM_LOGICAL_BATCH_SIZE --experiment_set_name $TAG --seed $SEED --dataloader_num_workers 8 --null_answer_path $NULL_ANSWER_PATH  2>&1 | tee -a $LOGFILE
         else
-            accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/solid_deception/training/train_explicit_rm.py --output_dir $RM_DIR --model_name_or_path $BASE_MODEL_PATH --dataset_name $DATASET_PATH --per_device_train_batch_size $RM_PDTBS --learning_rate $RM_LR --run_name $RM_RUN_NAME --gradient_checkpointing True --per_device_eval_batch_size 4 --bf16 --lora_r $RM_LORA_R --use_peft --num_train_epochs $RM_NUM_EPOCHS $DEBUG_TRAINING_FLAG --logical_batch_size $RM_LOGICAL_BATCH_SIZE  --experiment_set_name $TAG --do_categorical_labels $CATEGORICAL_RM_LABELS  --null_example_reward -5.0 --dataloader_num_workers 8 --seed $SEED 2>&1 | tee -a $LOGFILE
+            accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/solid_deception/training/train_explicit_rm.py --output_dir $RM_DIR --model_name_or_path $BASE_MODEL_PATH --dataset_name $DATASET_PATH --per_device_train_batch_size $RM_PDTBS --learning_rate $RM_LR --run_name $RM_RUN_NAME --gradient_checkpointing True --per_device_eval_batch_size 4 --bf16 --lora_r $RM_LORA_R --use_peft --num_train_epochs $RM_NUM_EPOCHS $DEBUG_TRAINING_FLAG --logical_batch_size $RM_LOGICAL_BATCH_SIZE  --experiment_set_name $TAG --do_categorical_labels $CATEGORICAL_RM_LABELS  --null_example_reward -5.0 --dataloader_num_workers 8 --seed $SEED --null_answer_path $NULL_ANSWER_PATH 2>&1 | tee -a $LOGFILE
         fi
         echo "TRAINED RM at $(date)" >> $LOGFILE
     fi
@@ -238,13 +239,13 @@ if ! $DO_DPO; then
     # # Train GRPO
     if ! grep -q "TRAINED GRPO at" $LOGFILE && [ "$RESTART_GRPO" = "false" ] ; then
         echo "STARTING GRPO at $(date)" >> $LOGFILE
-        WANDB_RUN_ID=$GRPO_RUN_NAME WANDB_RESUME=allow accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/training/train_grpo.py --reward_model_path "${RM_DIR}_adapter" --sft_model_path "${SFT_DIR}_adapter" --per_device_train_batch_size $GRPO_PDTBS --local_rollout_forward_batch_size 24 --eval_steps 100 --per_device_eval_batch_size 2 --run_name $GRPO_RUN_NAME --eval_strategy steps --output_dir $POLICY_DIR  --model_name_or_path $BASE_MODEL_PATH --rloo_k $GRPO_K  --learning_rate $GRPO_LR --gradient_checkpointing True --missing_eos_penalty 1.0 --total_episodes $GRPO_TOTAL_EPS --kl_coef $DPO_KL_COEF --dataloader_num_workers 8 --dataset_name $DATASET_PATH --use_triple_peft --lora_r $POLICY_LORA_R --bf16 --max_grad_norm 1000 --clip $DEBUG_TRAINING_FLAG --logical_batch_size $GRPO_LOGICAL_BATCH_SIZE --experiment_set_name $TAG --no_naive_pg_gradient False --do_categorical_labels $CATEGORICAL_GRPO_LABELS $GRPO_FLAG  --seed $SEED --null_example_reward -5.0 2>&1 | tee -a $LOGFILE
+        WANDB_RUN_ID=$GRPO_RUN_NAME WANDB_RESUME=allow accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/training/train_grpo.py --reward_model_path "${RM_DIR}_adapter" --sft_model_path "${SFT_DIR}_adapter" --per_device_train_batch_size $GRPO_PDTBS --local_rollout_forward_batch_size 24 --eval_steps 100 --per_device_eval_batch_size 2 --run_name $GRPO_RUN_NAME --eval_strategy steps --output_dir $POLICY_DIR  --model_name_or_path $BASE_MODEL_PATH --rloo_k $GRPO_K  --learning_rate $GRPO_LR --gradient_checkpointing True --missing_eos_penalty 1.0 --total_episodes $GRPO_TOTAL_EPS --kl_coef $DPO_KL_COEF --dataloader_num_workers 8 --dataset_name $DATASET_PATH --use_triple_peft --lora_r $POLICY_LORA_R --bf16 --max_grad_norm 1000 --clip $DEBUG_TRAINING_FLAG --logical_batch_size $GRPO_LOGICAL_BATCH_SIZE --experiment_set_name $TAG --no_naive_pg_gradient False --do_categorical_labels $CATEGORICAL_GRPO_LABELS $GRPO_FLAG  --seed $SEED --null_example_reward -5.0 --null_answer_path $NULL_ANSWER_PATH  2>&1 | tee -a $LOGFILE
         echo "TRAINED GRPO at $(date)" >> $LOGFILE
     fi
 else
     if ! grep -q "TRAINED DPO at" $LOGFILE; then
         echo "STARTING DPO at $(date)" >> $LOGFILE
-        accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/training/train_dpo.py --dataset_name $DATASET_PATH  --output_dir $POLICY_DIR --model_name_or_path "${SFT_DIR}_adapter"  --per_device_train_batch_size $DPO_PDTBS --eval_steps 400 --label_smoothing_factor 0.05 --per_device_eval_batch_size 2 --run_name $DPO_RUN_NAME --learning_rate $DPO_LR --eval_strategy steps --bf16 --use_peft --lora_r $POLICY_LORA_R --logical_batch_size $DPO_LOGICAL_BATCH_SIZE $DEBUG_TRAINING_FLAG --experiment_set_name $TAG --seed $SEED --kl_beta $GRPO_KL_COEF --eval_steps 100 2>&1 | tee -a $LOGFILE
+        accelerate launch --config_file $ACONFIG --main_process_port $MASTER_PORT $P/solid_deception/training/train_dpo.py --dataset_name $DATASET_PATH  --output_dir $POLICY_DIR --model_name_or_path "${SFT_DIR}_adapter"  --per_device_train_batch_size $DPO_PDTBS --eval_steps 400 --label_smoothing_factor 0.05 --per_device_eval_batch_size 2 --run_name $DPO_RUN_NAME --learning_rate $DPO_LR --eval_strategy steps --bf16 --use_peft --lora_r $POLICY_LORA_R --logical_batch_size $DPO_LOGICAL_BATCH_SIZE $DEBUG_TRAINING_FLAG --experiment_set_name $TAG --seed $SEED --kl_beta $GRPO_KL_COEF --eval_steps 100 --null_answer_path $NULL_ANSWER_PATH 2>&1 | tee -a $LOGFILE
         echo "TRAINED DPO at $(date)" >> $LOGFILE
     fi
 fi
@@ -252,7 +253,7 @@ fi
 # # Eval
 if ! grep -q "FINISHED EVAL at" $LOGFILE   && [ "$RESTART_GRPO" = "false" ] ; then
     echo "STARTING EVAL at $(date)" >> $LOGFILE
-    CUDA_VISIBLE_DEVICES=0 python $P/solid_deception/eval/reward.py --model_path "${POLICY_DIR}_adapter" --reward_model_path "$RM_OUTPUT_DIR" --tokenizer_path $BASE_MODEL_PATH --dataset_path $CSV_PATH --original_model_path $BASE_MODEL_PATH --lr_path $LR_PATH --layer $LAYER --output_dir $EVAL_OUT_DIR --n_rows 20 $DEBUG_TRAINING_FLAG --experiment_set_name $TAG --run_name $EVAL_RUN_NAME --sae_path $SAE_PATH --sae_words_path $SAE_WORDS_PATH --sae_descriptions_path $SAE_DESCRIPTIONS_PATH $SAE_FLAG --null_example_reward -5.0 $CATEGORICAL_GRPO_LABELS_FLAG --seed $SEED $ALL_POSITIONS_FLAG --sft_model_path $EVAL_SFT_PATH 2>&1 | tee -a $LOGFILE
+    CUDA_VISIBLE_DEVICES=0 python $P/solid_deception/eval/reward.py --model_path "${POLICY_DIR}_adapter" --reward_model_path "$RM_OUTPUT_DIR" --tokenizer_path $BASE_MODEL_PATH --dataset_path $CSV_PATH --original_model_path $BASE_MODEL_PATH --lr_path $LR_PATH --layer $LAYER --output_dir $EVAL_OUT_DIR --n_rows 20 $DEBUG_TRAINING_FLAG --experiment_set_name $TAG --run_name $EVAL_RUN_NAME --sae_path $SAE_PATH --sae_words_path $SAE_WORDS_PATH --sae_descriptions_path $SAE_DESCRIPTIONS_PATH $SAE_FLAG --null_example_reward -5.0 $CATEGORICAL_GRPO_LABELS_FLAG --seed $SEED $ALL_POSITIONS_FLAG --sft_model_path $EVAL_SFT_PATH --null_answer_path $NULL_ANSWER_PATH 2>&1 | tee -a $LOGFILE
     echo "FINISHED EVAL at $(date)" >> $LOGFILE
 fi
 
