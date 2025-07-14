@@ -84,7 +84,7 @@ export DETECTOR_PDTBS=$((BASE_PDTBS / 2))
 # RM
 export RM_LOGICAL_BATCH_SIZE=256
 export RM_NUM_EPOCHS=4
-export RM_LORA_R=256
+export RM_LORA_R=16
 export RM_LR=5e-6
 export RM_PDTBS=$((BASE_PDTBS * 2))
 
@@ -96,7 +96,7 @@ export SFT_LR=1e-5
 # GRPO
 export GRPO_LOGICAL_BATCH_SIZE=512
 export GRPO_PDTBS=$((BASE_PDTBS / 2))
-export POLICY_LORA_R=512
+export POLICY_LORA_R=16
 export GRPO_LRFBS=24
 export GRPO_EVAL_STEPS=100
 export GRPO_LR=5e-6
