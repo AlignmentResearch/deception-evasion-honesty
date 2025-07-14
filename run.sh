@@ -42,7 +42,7 @@ export WANDB_PROJECT='solid_deception'
 # Global Settings
 export DEBUG_TRAINING=true
 export DO_SAE=false
-export DO_DPO=false
+export DO_DPO=true
 export DO_BT_RM=true # Bradley-Terry reward model
 export DO_CATEGORICAL_RM=false
 export ADAPTIVE=false
@@ -53,9 +53,9 @@ export BASE_PDTBS=8 # Per device batch size for 8b
 
 # Model
 # export BASE_MODEL_PATH=meta-llama/Meta-Llama-3.1-8B-Instruct
-export BASE_MODEL_PATH=meta-llama/Meta-Llama-3.1-8B-Instruct
+# export BASE_MODEL_PATH=meta-llama/Meta-Llama-3.1-8B-Instruct
 export GENERATION_LORA_PATH=None
-# export BASE_MODEL_PATH=meta-llama/Llama-3.2-1B-Instruct
+export BASE_MODEL_PATH=meta-llama/Llama-3.2-1B-Instruct
 # export BASE_MODEL_PATH=meta-llama/Llama-3.2-3B-Instruct
 
 # Training
