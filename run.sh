@@ -3,8 +3,8 @@ set -o pipefail
 
 source ./configs/setup.sh
 
-cd /workspace
-export P=/workspace
+cd /workspace/deception-evasion-honesty
+export P=/workspace/deception-evasion-honesty
 echo "Successfully setup!"
 export PATH="/home/dev/.local/bin:$PATH"
 export MASTER_PORT=$(echo '12'$(shuf -i 100-999 -n 1))
