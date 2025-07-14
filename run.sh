@@ -47,7 +47,7 @@ export DO_BT_RM=true # Bradley-Terry reward model
 export DO_CATEGORICAL_RM=false
 export ADAPTIVE=false
 export RESTART_GRPO=false
-export BASE_PDTBS=8 # Per device batch size for 8b
+export BASE_PDTBS=32 # Per device batch size for 8b
 
 # Debugging
 
@@ -102,7 +102,7 @@ export GRPO_EVAL_STEPS=100
 export GRPO_LR=5e-6
 export GRPO_TOTAL_EPS=150000
 export GRPO_KL_COEF=0.1
-export USE_GRPO=true
+export USE_GRPO=false
 
 if $USE_GRPO; then
     export GRPO_K=8
