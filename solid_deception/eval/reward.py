@@ -39,7 +39,7 @@ from solid_deception.training.reward_functions import (  # type: ignore
 )
 from solid_deception.utils.training import UpdateConfigCallback  # type: ignore
 
-torch.serialization.add_safe_globals([torch.nn.modules.linear.Linear])  # type: ignore
+# torch.serialization.add_safe_globals([torch.nn.modules.linear.Linear])  # type: ignore
 
 WANDB_PROJECT = os.environ.get("WANDB_PROJECT", "")
 
@@ -1089,7 +1089,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--system_prompt_path",
         type=str,
-        default="/workspace/solid_deception/training/gpt4_reward_prompt.txt",
+        default="solid_deception/training/gpt4_reward_prompt.txt",
         help="Path to system prompt",
     )
     parser.add_argument(

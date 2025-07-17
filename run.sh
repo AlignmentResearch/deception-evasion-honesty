@@ -3,8 +3,8 @@ set -o pipefail
 
 source ./configs/setup.sh
 
-cd /workspace
-export P=/workspace
+cd /workspace/deception-evasion-honesty
+export P=/workspace/deception-evasion-honesty
 echo "Successfully setup!"
 export PATH="/home/dev/.local/bin:$PATH"
 export MASTER_PORT=$(echo '12'$(shuf -i 100-999 -n 1))
@@ -42,20 +42,20 @@ export WANDB_PROJECT='solid_deception'
 # Global Settings
 export DEBUG_TRAINING=true
 export DO_SAE=false
-export DO_DPO=false
+export DO_DPO=true
 export DO_BT_RM=true # Bradley-Terry reward model
 export DO_CATEGORICAL_RM=false
 export ADAPTIVE=false
 export RESTART_GRPO=false
-export BASE_PDTBS=8 # Per device batch size for 8b
+export BASE_PDTBS=32 # Per device batch size for 8b
 
 # Debugging
 
 # Model
 # export BASE_MODEL_PATH=meta-llama/Meta-Llama-3.1-8B-Instruct
-export BASE_MODEL_PATH=meta-llama/Meta-Llama-3.1-8B-Instruct
+# export BASE_MODEL_PATH=meta-llama/Meta-Llama-3.1-8B-Instruct
 export GENERATION_LORA_PATH=None
-# export BASE_MODEL_PATH=meta-llama/Llama-3.2-1B-Instruct
+export BASE_MODEL_PATH=meta-llama/Llama-3.2-1B-Instruct
 # export BASE_MODEL_PATH=meta-llama/Llama-3.2-3B-Instruct
 
 # Training
@@ -84,7 +84,7 @@ export DETECTOR_PDTBS=$((BASE_PDTBS / 2))
 # RM
 export RM_LOGICAL_BATCH_SIZE=256
 export RM_NUM_EPOCHS=4
-export RM_LORA_R=256
+export RM_LORA_R=16
 export RM_LR=5e-6
 export RM_PDTBS=$((BASE_PDTBS * 2))
 
@@ -96,13 +96,13 @@ export SFT_LR=1e-5
 # GRPO
 export GRPO_LOGICAL_BATCH_SIZE=512
 export GRPO_PDTBS=$((BASE_PDTBS / 2))
-export POLICY_LORA_R=512
+export POLICY_LORA_R=16
 export GRPO_LRFBS=24
 export GRPO_EVAL_STEPS=100
 export GRPO_LR=5e-6
 export GRPO_TOTAL_EPS=150000
 export GRPO_KL_COEF=0.1
-export USE_GRPO=true
+export USE_GRPO=false
 
 if $USE_GRPO; then
     export GRPO_K=8

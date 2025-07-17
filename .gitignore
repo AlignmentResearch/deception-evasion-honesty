@@ -168,3 +168,9 @@ cython_debug/
 *.sw[a-z]
 
 **/.claude/settings.local.json
+
+
+*.json
+*.csv
+*.pkl
+outputs/*
