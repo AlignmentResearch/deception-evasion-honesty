@@ -23,7 +23,7 @@ export H1_FRAC=0.5
 export BASE_POLICY_PATH="meta-llama/Llama-3.2-1B-Instruct"  # Start with original model
 
 # Debug mode - set to true to use only 5% of data for fast iteration
-export DEBUG_MODE=true
+export SUBSAMPLE_DATASET=true
 
 # Setting up file locations (organizational)
 export LOGFILE="$EXPERIMENT_SET_DIRECTORY/iterative_stdout_err.log"
@@ -167,7 +167,7 @@ else
 fi
 
 # Debug mode - just reduce data size to 5%
-if $DEBUG_MODE; then
+if $SUBSAMPLE_DATASET; then
     echo "DEBUG MODE ENABLED - Using 5% of data" >> $LOGFILE
     export DEBUG_FRAC=0.05
 else
