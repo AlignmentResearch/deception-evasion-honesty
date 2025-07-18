@@ -40,14 +40,14 @@ export WANDB_PROJECT='solid_deception'
 # ----------------------------------------
 
 # Global Settings
-export DEBUG_TRAINING=true
+export DEBUG_TRAINING=false
 export DO_SAE=false
 export DO_DPO=true
 export DO_BT_RM=true # Bradley-Terry reward model
 export DO_CATEGORICAL_RM=false
 export ADAPTIVE=false
 export RESTART_GRPO=false
-export BASE_PDTBS=32 # Per device batch size for 8b
+export BASE_PDTBS=128 # Per device batch size for 8b
 
 # Debugging
 
@@ -71,7 +71,7 @@ export REWARD_SYSTEM_PROMPT="$P/solid_deception/training/gpt4_reward_prompt.txt"
 export LAYER=16
 export TRAIN_DATA_LIMIT=None
 export LIE_FPR=None
-export LIE_TPR=0.5 
+export LIE_TPR=0.9 
 export SAE_PATH="$P/saes/layer_23"
 export SAE_DESCRIPTIONS_PATH="$P/solid_deception/detection/model.layers.23_feature.json"
 export SAE_WORDS_PATH="$P/solid_deception/detection/sae_words.txt"
@@ -82,20 +82,20 @@ export SEED=0
 export DETECTOR_PDTBS=$((BASE_PDTBS / 2))
 
 # RM
-export RM_LOGICAL_BATCH_SIZE=256
+export RM_PDTBS=$((BASE_PDTBS * 2))
+export RM_LOGICAL_BATCH_SIZE=$RM_PDTBS
 export RM_NUM_EPOCHS=4
 export RM_LORA_R=16
 export RM_LR=5e-6
-export RM_PDTBS=$((BASE_PDTBS * 2))
 
 # SFT
-export SFT_LOGICAL_BATCH_SIZE=128
 export SFT_PDTBS=$((BASE_PDTBS * 2))
+export SFT_LOGICAL_BATCH_SIZE=$SFT_PDTBS
 export SFT_LR=1e-5
 
 # GRPO
-export GRPO_LOGICAL_BATCH_SIZE=512
 export GRPO_PDTBS=$((BASE_PDTBS / 2))
+export GRPO_LOGICAL_BATCH_SIZE=$GRPO_PDTBS
 export POLICY_LORA_R=16
 export GRPO_LRFBS=24
 export GRPO_EVAL_STEPS=100
@@ -113,9 +113,9 @@ else
 fi
 
 # DPO
-export DPO_LOGICAL_BATCH_SIZE=256
-export DPO_LR=1e-5
 export DPO_PDTBS=$((BASE_PDTBS/2)) # chosen + rejected per example
+export DPO_LOGICAL_BATCH_SIZE=$DPO_PDTBS
+export DPO_LR=1e-5
 export DPO_KL_COEF=0.1
 
 # ----------------------------------------
