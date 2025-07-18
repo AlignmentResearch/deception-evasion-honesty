@@ -174,3 +174,4 @@ cython_debug/
 *.csv
 *.pkl
 outputs/*
+paper_lie_detector.txt
