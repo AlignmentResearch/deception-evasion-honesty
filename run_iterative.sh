@@ -22,6 +22,9 @@ export NUM_ITERATIONS=2
 export H1_FRAC=0.5
 export BASE_POLICY_PATH="meta-llama/Llama-3.2-1B-Instruct"  # Start with original model
 
+# Debug mode - set to true to use only 5% of data for fast iteration
+export DEBUG_MODE=false
+
 # Setting up file locations (organizational)
 export LOGFILE="$EXPERIMENT_SET_DIRECTORY/iterative_stdout_err.log"
 export WANDB_PROJECT='solid_deception_iterative'
@@ -62,20 +65,20 @@ export SEED=0
 export DETECTOR_PDTBS=$((BASE_PDTBS / 2))
 
 # RM
-export RM_PDTBS=$((BASE_PDTBS * 2))
-export RM_LOGICAL_BATCH_SIZE=$RM_PDTBS
+export RM_LOGICAL_BATCH_SIZE=256
 export RM_NUM_EPOCHS=4
 export RM_LORA_R=16
 export RM_LR=5e-6
+export RM_PDTBS=$((BASE_PDTBS * 2))
 
 # SFT
+export SFT_LOGICAL_BATCH_SIZE=128
 export SFT_PDTBS=$((BASE_PDTBS * 2))
-export SFT_LOGICAL_BATCH_SIZE=$SFT_PDTBS
 export SFT_LR=1e-5
 
 # GRPO
+export GRPO_LOGICAL_BATCH_SIZE=512
 export GRPO_PDTBS=$((BASE_PDTBS / 2))
-export GRPO_LOGICAL_BATCH_SIZE=$GRPO_PDTBS
 export POLICY_LORA_R=16
 export GRPO_LRFBS=24
 export GRPO_EVAL_STEPS=100
@@ -93,10 +96,16 @@ else
 fi
 
 # DPO
-export DPO_PDTBS=$((BASE_PDTBS/2)) # chosen + rejected per example
-export DPO_LOGICAL_BATCH_SIZE=$DPO_PDTBS
+export DPO_LOGICAL_BATCH_SIZE=256
 export DPO_LR=1e-5
+export DPO_PDTBS=$((BASE_PDTBS/4)) # chosen + rejected per example
 export DPO_KL_COEF=0.1
+
+# Debug mode - just reduce data size to 5%
+if $DEBUG_MODE; then
+    echo "DEBUG MODE ENABLED - Using 5% of data" >> $LOGFILE
+    export TRAIN_DATA_LIMIT=0.05
+fi
 
 # ----------------------------------------
 
