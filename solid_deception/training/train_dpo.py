@@ -184,7 +184,13 @@ if __name__ == "__main__":
                 model_config.model_name_or_path, **model_kwargs
             )
 
-    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
+    # Load tokenizer from the base model path if using adapter
+    if os.path.exists(os.path.join(model_config.model_name_or_path, "adapter_config.json")):
+        # Use base model tokenizer for adapters
+        tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B-Instruct")
+    else:
+        # Use the provided model path
+        tokenizer = AutoTokenizer.from_pretrained(model_config.model_name_or_path)
     if tokenizer.pad_token is None:
         print("Assuming you are using Llama to set the pad token!")
         tokenizer.pad_token_id = tokenizer("<|end_of_text|>")["input_ids"][1]
