@@ -180,7 +180,14 @@ if __name__ == "__main__":
             use_rslora=False,
             # init_lora_weights="pissa",
         )
-        model.add_adapter(peft_config)
+        
+        # Check if model already has adapters (from previous iteration)
+        if hasattr(model, 'peft_config') and model.peft_config:
+            print("Model already has adapters, continuing training with existing adapter")
+            peft_config = None  # Don't add new adapter
+        else:
+            print("Adding new LoRA adapter")
+            model.add_adapter(peft_config)
     else:
         peft_config = None
     tokenizer = AutoTokenizer.from_pretrained(model_config.model_name_or_path)
