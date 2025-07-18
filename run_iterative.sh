@@ -23,7 +23,7 @@ export H1_FRAC=0.5
 export BASE_POLICY_PATH="meta-llama/Llama-3.2-1B-Instruct"  # Start with original model
 
 # Debug mode - set to true to use only 5% of data for fast iteration
-export DEBUG_MODE=false
+export DEBUG_MODE=true
 
 # Setting up file locations (organizational)
 export LOGFILE="$EXPERIMENT_SET_DIRECTORY/iterative_stdout_err.log"
@@ -73,7 +73,7 @@ export RM_PDTBS=$((BASE_PDTBS * 2))
 
 # SFT
 export SFT_LOGICAL_BATCH_SIZE=128
-export SFT_PDTBS=$((BASE_PDTBS * 2))
+export SFT_PDTBS=$((BASE_PDTBS))
 export SFT_LR=1e-5
 
 # GRPO
@@ -98,14 +98,9 @@ fi
 # DPO
 export DPO_LOGICAL_BATCH_SIZE=256
 export DPO_LR=1e-5
-export DPO_PDTBS=$((BASE_PDTBS/4)) # chosen + rejected per example
+export DPO_PDTBS=$((BASE_PDTBS/8)) # chosen + rejected per example
 export DPO_KL_COEF=0.1
 
-# Debug mode - just reduce data size to 5%
-if $DEBUG_MODE; then
-    echo "DEBUG MODE ENABLED - Using 5% of data" >> $LOGFILE
-    export TRAIN_DATA_LIMIT=0.05
-fi
 
 # ----------------------------------------
 
@@ -169,6 +164,14 @@ if [ ! -f "$LOGFILE" ]; then
     touch "$LOGFILE"
 else
     echo "Iterative Training Restarted at $(date)" >> "$LOGFILE"
+fi
+
+# Debug mode - just reduce data size to 5%
+if $DEBUG_MODE; then
+    echo "DEBUG MODE ENABLED - Using 5% of data" >> $LOGFILE
+    export DEBUG_FRAC=0.05
+else
+    export DEBUG_FRAC=""
 fi
 
 echo "<env>"
@@ -237,6 +240,7 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
             --iterative \
             --h1_frac $H1_FRAC \
             --iteration $iteration \
+            ${DEBUG_FRAC:+--debug_frac $DEBUG_FRAC} \
             2>&1 | tee -a $ITERATION_LOGFILE
         echo "MUNGED DATA for iteration $iteration at $(date)" >> $ITERATION_LOGFILE
     fi

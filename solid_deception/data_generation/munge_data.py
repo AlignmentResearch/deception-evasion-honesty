@@ -332,6 +332,13 @@ def main(args) -> None:
     examples = dataset_dict["train"]  # type: ignore
     logger.info(f"Loaded {len(examples)} conversations")
     
+    # Debug mode: sample a percentage of the dataset
+    debug_frac = getattr(args, 'debug_frac', None)
+    if debug_frac is not None and debug_frac < 1.0:
+        n_debug_examples = int(len(examples) * debug_frac)
+        examples = examples.select(np.random.choice(len(examples), n_debug_examples, replace=False))
+        logger.info(f"DEBUG MODE: Sampled {len(examples)} examples ({debug_frac*100:.1f}% of original)")
+    
     if hasattr(args, 'iterative') and args.iterative:
         # Use iterative splitting for h1/h2
         train_examples, train_lr_examples, test_examples, remaining_examples = create_iterative_splits(
@@ -442,6 +449,12 @@ if __name__ == "__main__":
         type=int,
         default=1,
         help="Current iteration number (1 or 2)",
+    )
+    parser.add_argument(
+        "--debug_frac",
+        type=float,
+        default=None,
+        help="Debug mode: sample this fraction of the dataset (e.g., 0.05 for 5%)",
     )
 
     args = parser.parse_args()
