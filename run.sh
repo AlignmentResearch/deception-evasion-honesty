@@ -47,7 +47,7 @@ export DO_BT_RM=true # Bradley-Terry reward model
 export DO_CATEGORICAL_RM=false
 export ADAPTIVE=false
 export RESTART_GRPO=false
-export BASE_PDTBS=128 # Per device batch size for 8b
+export BASE_PDTBS=64 # Per device batch size for 8b
 
 # Debugging
 
