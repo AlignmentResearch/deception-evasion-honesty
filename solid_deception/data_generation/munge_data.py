@@ -3,14 +3,12 @@ import copy
 import json
 import logging
 import math
-import pickle as pkl
 import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 import numpy as np
 import pandas as pd
-import tqdm
 from datasets import Dataset, DatasetDict, load_dataset
 from torch.utils.data import DataLoader  # type: ignore
 
@@ -208,6 +206,65 @@ def create_dataset(
     return dataset_dict, new_df
 
 
+def create_iterative_splits(
+    examples: Dataset,
+    h1_frac: float = 0.5,
+    test_frac: float = 0.05,
+    train_lr_frac: float = 0.05,
+    iteration: int = 1,
+    seed: int = 0,
+) -> Tuple[Dataset, Dataset, Dataset, Dataset]:
+    """
+    Create h1/h2 splits for iterative SOLiD training.
+    
+    Args:
+        examples: Full dataset
+        h1_frac: Fraction of data to use for h1 (first iteration)
+        test_frac: Fraction of h1 to use for test set
+        train_lr_frac: Fraction of h1 training data to use for lie detector training
+        iteration: Current iteration number (1 or 2)
+        seed: Random seed for reproducibility
+    
+    Returns:
+        Tuple of (h1_train, h1_train_lr, h1_test, h2) datasets
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    
+    # Shuffle examples
+    examples = examples.select(np.random.permutation(len(examples)))
+    
+    # Split into h1 and h2
+    n_h1_examples = int(len(examples) * h1_frac)
+    h1_examples = examples.select(range(n_h1_examples))
+    h2_examples = examples.select(range(n_h1_examples, len(examples)))
+    
+    if iteration == 1:
+        # For first iteration, use h1 for training
+        n_test_examples = int(len(h1_examples) * test_frac)
+        n_non_test_examples = len(h1_examples) - n_test_examples
+        n_train_lr_examples = int(n_non_test_examples * train_lr_frac)
+        n_train_examples = n_non_test_examples - n_train_lr_examples
+        
+        h1_train = h1_examples.select(range(n_train_examples))
+        h1_train_lr = h1_examples.select(range(n_train_examples, n_train_examples + n_train_lr_examples))
+        h1_test = h1_examples.select(range(n_train_examples + n_train_lr_examples, len(h1_examples)))
+        
+        return h1_train, h1_train_lr, h1_test, h2_examples
+    else:
+        # For second iteration, use h2 for training
+        n_test_examples = int(len(h2_examples) * test_frac)
+        n_non_test_examples = len(h2_examples) - n_test_examples
+        n_train_lr_examples = int(n_non_test_examples * train_lr_frac)
+        n_train_examples = n_non_test_examples - n_train_lr_examples
+        
+        h2_train = h2_examples.select(range(n_train_examples))
+        h2_train_lr = h2_examples.select(range(n_train_examples, n_train_examples + n_train_lr_examples))
+        h2_test = h2_examples.select(range(n_train_examples + n_train_lr_examples, len(h2_examples)))
+        
+        return h2_train, h2_train_lr, h2_test, h1_examples
+
+
 def create_and_save_dataset(
     df_path: str,
     dataset_output_path: str,
@@ -254,6 +311,8 @@ def main(args) -> None:
     test_frac = args.test_frac
     train_lr_frac = args.train_lr_frac
     seed = args.seed
+    h1_frac = getattr(args, 'h1_frac', 0.5)
+    iteration = getattr(args, 'iteration', 1)
 
     random.seed(seed)
     np.random.seed(seed)
@@ -269,22 +328,30 @@ def main(args) -> None:
 
     # The typical path where we are passed in a raw json file
     # examples = load_json_data(input_path)
-    examples = load_dataset(input_path)["train"]
+    dataset_dict = load_dataset(input_path)
+    examples = dataset_dict["train"]  # type: ignore
     logger.info(f"Loaded {len(examples)} conversations")
-    # Calculate the number of examples for each split
-    n_test_examples = int(len(examples) * test_frac)
-    n_non_test_examples = len(examples) - n_test_examples
-    n_train_lr_examples = int(n_non_test_examples * train_lr_frac)
-    n_train_examples = n_non_test_examples - n_train_lr_examples
+    
+    if hasattr(args, 'iterative') and args.iterative:
+        # Use iterative splitting for h1/h2
+        train_examples, train_lr_examples, test_examples, remaining_examples = create_iterative_splits(
+            examples, h1_frac, test_frac, train_lr_frac, iteration, seed
+        )
+        logger.info(f"Iteration {iteration}: Using {'h1' if iteration == 1 else 'h2'} for training")
+    else:
+        # Original splitting logic
+        n_test_examples = int(len(examples) * test_frac)
+        n_non_test_examples = len(examples) - n_test_examples
+        n_train_lr_examples = int(n_non_test_examples * train_lr_frac)
+        n_train_examples = n_non_test_examples - n_train_lr_examples
 
-    # Split examples into train, train_lr, and test
-    examples = examples.select(np.random.permutation(len(examples)))
-    # random.shuffle(examples)
-    train_examples = examples.select(range(n_train_examples))
-    train_lr_examples = examples.select(
-        range(n_train_examples, n_train_examples + n_train_lr_examples)
-    )
-    test_examples = examples.select(range(n_train_examples + n_train_lr_examples, len(examples)))
+        # Split examples into train, train_lr, and test
+        examples = examples.select(np.random.permutation(len(examples)))
+        train_examples = examples.select(range(n_train_examples))
+        train_lr_examples = examples.select(
+            range(n_train_examples, n_train_examples + n_train_lr_examples)
+        )
+        test_examples = examples.select(range(n_train_examples + n_train_lr_examples, len(examples)))
 
     transformed_train_data = transform_data(
         train_examples,
@@ -349,7 +416,6 @@ if __name__ == "__main__":
         required=True,
         help="Fraction of all *train* examples to use for training the LR",
     )
-
     parser.add_argument(
         "--seed",
         type=int,
@@ -359,6 +425,23 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--no_cache", action="store_true", help="Do not run caching behavior (loading or saving)"
+    )
+    parser.add_argument(
+        "--iterative",
+        action="store_true",
+        help="Use iterative splitting for h1/h2 SOLiD training",
+    )
+    parser.add_argument(
+        "--h1_frac",
+        type=float,
+        default=0.5,
+        help="Fraction of data to use for h1 (first iteration)",
+    )
+    parser.add_argument(
+        "--iteration",
+        type=int,
+        default=1,
+        help="Current iteration number (1 or 2)",
     )
 
     args = parser.parse_args()
