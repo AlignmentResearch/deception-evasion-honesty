@@ -2,6 +2,14 @@
 set -e
 set -o pipefail
 
+# The following 5 hyperparameters are key for experiment configuration:
+#   SEED: Random seed
+#   LIE_TPR: Lie true positive rate
+#   DEBUG_TRAINING: Whether debug training is enabled
+#   SUBSAMPLE_DATASET: Whether dataset is subsampled
+#   NUM_ITERATIONS: Number of iterations
+# You must set these in the environment before running this script.
+
 source ./configs/setup.sh
 
 cd /workspace/deception-evasion-honesty
@@ -11,26 +19,30 @@ export PATH="/home/dev/.local/bin:$PATH"
 export MASTER_PORT=$(echo '12'$(shuf -i 100-999 -n 1))
 echo $MASTER_PORT
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-export TAG="$TIMESTAMP"
+export TAG="${TIMESTAMP}_TPR_${LIE_TPR}_SEED_${SEED}_DEBUG_${DEBUG_TRAINING}_SUBSAMPLE_${SUBSAMPLE_DATASET}_ITER_${NUM_ITERATIONS}"
 
 export EXPERIMENT_SET_DIRECTORY="$P/outputs/$TAG"
 mkdir "$P/outputs" || true
 mkdir $EXPERIMENT_SET_DIRECTORY || true
 
 # Iterative training parameters
-export NUM_ITERATIONS=2
-export H1_FRAC=0.5
+if [ "$NUM_ITERATIONS" -eq 2 ]; then
+    export H1_FRAC=0.5
+elif [ "$NUM_ITERATIONS" -eq 1 ]; then
+    export H1_FRAC=1.0
+else
+    echo "ERROR: NUM_ITERATIONS must be 1 or 2 for H1_FRAC logic." >&2
+    exit 1
+fi
 export BASE_POLICY_PATH="meta-llama/Llama-3.2-1B-Instruct"  # Start with original model
 
 # Debug mode - set to true to use only 5% of data for fast iteration
-export SUBSAMPLE_DATASET=false
 
 # Setting up file locations (organizational)
 export LOGFILE="$EXPERIMENT_SET_DIRECTORY/iterative_stdout_err.log"
 export WANDB_PROJECT='solid_deception_iterative'
 
 # Global Settings
-export DEBUG_TRAINING=false
 export DO_SAE=false
 export DO_DPO=true
 export DO_BT_RM=true # Bradley-Terry reward model
@@ -54,14 +66,12 @@ export REWARD_SYSTEM_PROMPT="$P/solid_deception/training/gpt4_reward_prompt.txt"
 export LAYER=16
 export TRAIN_DATA_LIMIT=None
 export LIE_FPR=None
-export LIE_TPR=0.9 
 export SAE_PATH="$P/saes/layer_23"
 export SAE_DESCRIPTIONS_PATH="$P/solid_deception/detection/model.layers.23_feature.json"
 export SAE_WORDS_PATH="$P/solid_deception/detection/sae_words.txt"
 export NULL_ANSWER_PATH="$P/data/null_answers.txt"
 export ALL_POSITIONS=false
 export SAMPLE_LABELS=false
-export SEED=0
 export DETECTOR_PDTBS=$((BASE_PDTBS / 2))
 
 # RM
@@ -168,7 +178,7 @@ fi
 
 # Debug mode - just reduce data size to 5%
 if $SUBSAMPLE_DATASET; then
-    echo "DEBUG MODE ENABLED - Using 5% of data" >> $LOGFILE
+    echo "Using 5% of data" >> $LOGFILE
     export DEBUG_FRAC=0.05
 else
     export DEBUG_FRAC=""
@@ -526,6 +536,11 @@ if [ $NUM_ITERATIONS -gt 1 ]; then
         --layer $LAYER \
         --max_length $MAX_DETECTOR_SEQ_LENGTH \
         --run_name $MERGE_EVAL_RUN_NAME \
+        --seed $SEED \
+        --lie_tpr $LIE_TPR \
+        --debug_training $DEBUG_TRAINING \
+        --subsample_dataset $SUBSAMPLE_DATASET \
+        --num_iterations $NUM_ITERATIONS \
         2>&1 | tee -a $MERGE_EVAL_LOGFILE
     
     echo "FINISHED MERGE AND EVALUATE at $(date)" >> $LOGFILE

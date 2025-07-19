@@ -191,7 +191,9 @@ def plot_confusion_matrix(confusion_matrix: np.ndarray, results: list, output_pa
     print(f"Saved confusion matrix plot to {plot_path}")
     plt.close()
 
-def log_to_wandb(results: list, confusion_matrix: np.ndarray, output_path: str, run_name: str = None):
+def log_to_wandb(results: list, confusion_matrix: np.ndarray, output_path: str, run_name: str = None,
+                seed: int = None, lie_tpr: float = None, debug_training: str = None, 
+                subsample_dataset: str = None, num_iterations: int = None):
     """Log results to wandb."""
     try:
         # Initialize wandb with run name from argument or environment variable
@@ -199,11 +201,25 @@ def log_to_wandb(results: list, confusion_matrix: np.ndarray, output_path: str, 
             run_name = os.environ.get("WANDB_RUN_ID", "merge_and_evaluate_probes")
         wandb.init(name=run_name)
         
-        # Log config
-        wandb.config.update({
+        # Log config with hyperparameters
+        config_dict = {
             "experiment_type": "MergedProbeEvaluation",
             "n_probes": len(results)
-        })
+        }
+        
+        # Add hyperparameters if provided
+        if seed is not None:
+            config_dict["seed"] = seed
+        if lie_tpr is not None:
+            config_dict["lie_tpr"] = lie_tpr
+        if debug_training is not None:
+            config_dict["debug_training"] = debug_training
+        if subsample_dataset is not None:
+            config_dict["subsample_dataset"] = subsample_dataset
+        if num_iterations is not None:
+            config_dict["num_iterations"] = num_iterations
+            
+        wandb.config.update(config_dict)
         
         # Log metrics for each probe
         for i, result in enumerate(results):
@@ -274,6 +290,11 @@ def main():
     parser.add_argument("--layer", type=int, default=16, help="Layer to extract features from")
     parser.add_argument("--max_length", type=int, default=512, help="Maximum sequence length")
     parser.add_argument("--run_name", type=str, default=None, help="Wandb run name")
+    parser.add_argument("--seed", type=int, default=None, help="Random seed used in training")
+    parser.add_argument("--lie_tpr", type=float, default=None, help="Lie true positive rate")
+    parser.add_argument("--debug_training", type=str, default=None, help="Whether debug training was used")
+    parser.add_argument("--subsample_dataset", type=str, default=None, help="Whether dataset was subsampled")
+    parser.add_argument("--num_iterations", type=int, default=None, help="Number of iterations")
     
     args = parser.parse_args()
     
@@ -348,7 +369,8 @@ def main():
         logger.info(f"Evaluation results saved to {args.results_csv}")
         
         # Log to wandb
-        log_to_wandb(results, confusion_matrix, args.output_csv, args.run_name)
+        log_to_wandb(results, confusion_matrix, args.output_csv, args.run_name,
+                    args.seed, args.lie_tpr, args.debug_training, args.subsample_dataset, args.num_iterations)
         
     except Exception as e:
         logger.error(f"Error: {e}")
