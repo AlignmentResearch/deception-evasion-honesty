@@ -87,7 +87,13 @@ def load_models_and_tokenizer(
     REWARD_TO_CATEGORY = {null_example_reward: 0, 1.0: 1, 2.0: 2, -1.0: 3}  # type: ignore
     CATEGORY_TO_REWARD = {v: k for k, v in REWARD_TO_CATEGORY.items()}
 
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+    # Load tokenizer from the base model path if using adapter
+    if os.path.exists(os.path.join(tokenizer_path, "adapter_config.json")):
+        # Use base model tokenizer for adapters
+        tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B-Instruct")
+    else:
+        # Use the provided tokenizer path
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
     if tokenizer.pad_token is None:
         if policy_path and "llama" in policy_path:  # type: ignore
             tokenizer.pad_token_id = tokenizer("<|end_of_text|>")["input_ids"][1]

@@ -71,7 +71,7 @@ export REWARD_SYSTEM_PROMPT="$P/solid_deception/training/gpt4_reward_prompt.txt"
 export LAYER=16
 export TRAIN_DATA_LIMIT=None
 export LIE_FPR=None
-export LIE_TPR=0.5 
+export LIE_TPR=0.9 
 export SAE_PATH="$P/saes/layer_23"
 export SAE_DESCRIPTIONS_PATH="$P/solid_deception/detection/model.layers.23_feature.json"
 export SAE_WORDS_PATH="$P/solid_deception/detection/sae_words.txt"
@@ -115,7 +115,7 @@ fi
 # DPO
 export DPO_LOGICAL_BATCH_SIZE=256
 export DPO_LR=1e-5
-export DPO_PDTBS=$((BASE_PDTBS/2)) # chosen + rejected per example
+export DPO_PDTBS=$((BASE_PDTBS/4)) # chosen + rejected per example
 export DPO_KL_COEF=0.1
 
 # ----------------------------------------
