@@ -9,7 +9,7 @@ import pandas as pd
 import torch
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple, Any
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_auc_score
@@ -191,11 +191,12 @@ def plot_confusion_matrix(confusion_matrix: np.ndarray, results: list, output_pa
     print(f"Saved confusion matrix plot to {plot_path}")
     plt.close()
 
-def log_to_wandb(results: list, confusion_matrix: np.ndarray, output_path: str):
+def log_to_wandb(results: list, confusion_matrix: np.ndarray, output_path: str, run_name: str = None):
     """Log results to wandb."""
     try:
-        # Initialize wandb with run name from environment variable
-        run_name = os.environ.get("WANDB_RUN_ID", "merge_and_evaluate_probes")
+        # Initialize wandb with run name from argument or environment variable
+        if run_name is None:
+            run_name = os.environ.get("WANDB_RUN_ID", "merge_and_evaluate_probes")
         wandb.init(name=run_name)
         
         # Log config
@@ -272,6 +273,7 @@ def main():
     parser.add_argument("--results_csv", type=str, default="evaluation_results.csv", help="Output path for evaluation results")
     parser.add_argument("--layer", type=int, default=16, help="Layer to extract features from")
     parser.add_argument("--max_length", type=int, default=512, help="Maximum sequence length")
+    parser.add_argument("--run_name", type=str, default=None, help="Wandb run name")
     
     args = parser.parse_args()
     
@@ -346,7 +348,7 @@ def main():
         logger.info(f"Evaluation results saved to {args.results_csv}")
         
         # Log to wandb
-        log_to_wandb(results, confusion_matrix, args.output_csv)
+        log_to_wandb(results, confusion_matrix, args.output_csv, args.run_name)
         
     except Exception as e:
         logger.error(f"Error: {e}")
