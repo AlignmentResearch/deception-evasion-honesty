@@ -1,522 +1,248 @@
 #!/usr/bin/env python3
 """
-Combined script to merge test datasets and evaluate linear probes.
-
-This script combines the functionality of merge_test_datasets.py and 
-evaluate_merged_probes.py to provide a complete workflow for:
-1. Merging test datasets from two iterations
-2. Evaluating both linear probes on the merged dataset
-3. Reporting true positive rates and other metrics
+Single script to merge test datasets and evaluate linear probes with confusion matrix.
 """
 
 import argparse
 import logging
-import os
-import subprocess
-import sys
+import pandas as pd
+import torch
+import numpy as np
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Tuple
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import roc_auc_score
+import pickle
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import tqdm
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+def merge_test_datasets(csv1: str, csv2: str, output_csv: str) -> str:
+    """Merge two test datasets and remove duplicates."""
+    logger.info(f"Merging test datasets from {csv1} and {csv2}")
+    
+    # Load datasets
+    df1 = pd.read_csv(csv1)
+    df2 = pd.read_csv(csv2)
+    
+    # Filter to test examples
+    test_df1 = df1[df1["split"] == "test"].copy()
+    test_df2 = df2[df2["split"] == "test"].copy()
+    
+    logger.info(f"Found {len(test_df1)} test examples in first dataset")
+    logger.info(f"Found {len(test_df2)} test examples in second dataset")
+    
+    # Combine datasets
+    merged_df = pd.concat([test_df1, test_df2], ignore_index=True)
+    
+    # Remove duplicates based on prompt + truthful_response + deceptive_response
+    before_dedup = len(merged_df)
+    merged_df = merged_df.drop_duplicates(subset=["prompt", "truthful_response", "deceptive_response"])
+    after_dedup = len(merged_df)
+    
+    logger.info(f"Removed {before_dedup - after_dedup} duplicate examples")
+    logger.info(f"Final merged dataset has {len(merged_df)} unique test examples")
+    
+    # Mark as merged test dataset
+    merged_df["split"] = "test_merged"
+    
+    # Save merged dataset
+    merged_df.to_csv(output_csv, index=False)
+    logger.info(f"Saved merged dataset to {output_csv}")
+    
+    return output_csv
 
-def calculate_confusion_matrix(
-    merged_csv: str,
-    iteration1_lr_path: str,
-    iteration2_lr_path: str,
-    model_path: str,
-    tokenizer_path: str,
-    output_csv: str,
-    batch_size: int = 8,
-    layer: int = 16,
-    max_length: int = 512,
-    do_sae: bool = False,
-    sae_path: Optional[str] = None,
-    sae_words_path: Optional[str] = None,
-    sae_descriptions_path: Optional[str] = None,
-    all_positions: bool = False,
-) -> None:
-    """Calculate and display a 2x2 confusion matrix comparing the two probes."""
+def load_lr_model(lr_path: str) -> Tuple[StandardScaler, LogisticRegression, float]:
+    """Load a trained logistic regression model."""
+    with open(lr_path, 'rb') as f:
+        model_data = pickle.load(f)
     
-    import pandas as pd
-    import numpy as np
-    import pickle as pkl
+    # The LR model is stored as a tuple: (scaler, lr, decision_boundary, lr_learn_stats)
+    scaler = model_data[0]
+    lr_model = model_data[1]
+    decision_boundary = model_data[2]
     
-    logger.info("Calculating confusion matrix between probes...")
-    
-    # Load the merged test dataset
-    df = pd.read_csv(merged_csv)
-    test_df = df[df["split"] == "test_merged"].copy()
-    if len(test_df) == 0:
-        test_df = df[df["split"] == "test"].copy()
-    
-    logger.info(f"Found {len(test_df)} test examples")
-    
-    # Load both LR models
-    with open(iteration1_lr_path, 'rb') as f:
-        scaler1, lr1, db1, _ = pkl.load(f)
-    with open(iteration2_lr_path, 'rb') as f:
-        scaler2, lr2, db2, _ = pkl.load(f)
-    
-    logger.info(f"Loaded LR models with decision boundaries: {db1:.4f} and {db2:.4f}")
-    
-    # Get predictions for deceptive responses only
-    # We need to extract features first
-    from solid_deception.data_generation.evaluate_merged_probes import (
-        load_model_and_tokenizer, extract_features
-    )
-    
-    # Load model and tokenizer
-    model, tokenizer = load_model_and_tokenizer(model_path, tokenizer_path)
-    
-    # Extract features
-    true_activations, false_activations = extract_features(
-        test_df,
-        model,
-        tokenizer,
-        batch_size=batch_size,
-        layer=layer,
-        max_length=max_length,
-        do_sae=do_sae,
-        sae_path=sae_path or "",
-        sae_words_path=sae_words_path or "",
-        sae_descriptions_path=sae_descriptions_path or "",
-        all_positions=all_positions,
-    )
-    
-    # Get predictions for deceptive responses only
-    false_data = false_activations.float()
-    false_data_scaled1 = scaler1.transform(false_data)
-    false_data_scaled2 = scaler2.transform(false_data)
-    
-    # Get predictions using decision boundaries
-    deceptive_probs1 = lr1.predict_proba(false_data_scaled1)[:, 1]  # type: ignore
-    deceptive_probs2 = lr2.predict_proba(false_data_scaled2)[:, 1]  # type: ignore
-    
-    deceptive_predictions1 = deceptive_probs1 > db1
-    deceptive_predictions2 = deceptive_probs2 > db2
-    
-    # Calculate confusion matrix
-    # Cell (0,0): Both probes detect the lie
-    both_detect = np.sum(deceptive_predictions1 & deceptive_predictions2)
-    # Cell (0,1): Probe1 detects, Probe2 doesn't
-    probe1_only = np.sum(deceptive_predictions1 & ~deceptive_predictions2)
-    # Cell (1,0): Probe2 detects, Probe1 doesn't
-    probe2_only = np.sum(~deceptive_predictions1 & deceptive_predictions2)
-    # Cell (1,1): Neither probe detects the lie
-    neither_detect = np.sum(~deceptive_predictions1 & ~deceptive_predictions2)
-    
-    total_lies = len(deceptive_predictions1)
-    
-    # Display the matrix
-    print("\n" + "="*60)
-    print("2x2 CONFUSION MATRIX: Probe Detection Overlap")
-    print("="*60)
-    print("Columns: Lies detected by Probe1 | Lies undetected by Probe1")
-    print("Rows:    Lies detected by Probe2 | Lies undetected by Probe2")
-    print("")
-    print(f"{'':>20} {'Detected by Probe1':>20} {'Undetected by Probe1':>20}")
-    print(f"{'Detected by Probe2':>20} {both_detect:>20} {probe2_only:>20}")
-    print(f"{'Undetected by Probe2':>20} {probe1_only:>20} {neither_detect:>20}")
-    print("")
-    print(f"Total lies: {total_lies}")
-    print(f"Both probes detect: {both_detect} ({both_detect/total_lies*100:.1f}%)")
-    print(f"Only Probe1 detects: {probe1_only} ({probe1_only/total_lies*100:.1f}%)")
-    print(f"Only Probe2 detects: {probe2_only} ({probe2_only/total_lies*100:.1f}%)")
-    print(f"Neither probe detects: {neither_detect} ({neither_detect/total_lies*100:.1f}%)")
-    print("="*60)
-    
-    # Also log it
-    logger.info("\n" + "="*60)
-    logger.info("2x2 CONFUSION MATRIX: Probe Detection Overlap")
-    logger.info("="*60)
-    logger.info("Columns: Lies detected by Probe1 | Lies undetected by Probe1")
-    logger.info("Rows:    Lies detected by Probe2 | Lies undetected by Probe2")
-    logger.info("")
-    logger.info(f"{'':>20} {'Detected by Probe1':>20} {'Undetected by Probe1':>20}")
-    logger.info(f"{'Detected by Probe2':>20} {both_detect:>20} {probe2_only:>20}")
-    logger.info(f"{'Undetected by Probe2':>20} {probe1_only:>20} {neither_detect:>20}")
-    logger.info("")
-    logger.info(f"Total lies: {total_lies}")
-    logger.info(f"Both probes detect: {both_detect} ({both_detect/total_lies*100:.1f}%)")
-    logger.info(f"Only Probe1 detects: {probe1_only} ({probe1_only/total_lies*100:.1f}%)")
-    logger.info(f"Only Probe2 detects: {probe2_only} ({probe2_only/total_lies*100:.1f}%)")
-    logger.info(f"Neither probe detects: {neither_detect} ({neither_detect/total_lies*100:.1f}%)")
-    logger.info("="*60)
-    
-    # Save confusion matrix to CSV
-    confusion_matrix_df = pd.DataFrame({
-        'Metric': ['Both Detect', 'Probe1 Only', 'Probe2 Only', 'Neither Detect'],
-        'Count': [both_detect, probe1_only, probe2_only, neither_detect],
-        'Percentage': [both_detect/total_lies*100, probe1_only/total_lies*100, 
-                      probe2_only/total_lies*100, neither_detect/total_lies*100]
-    })
-    
-    confusion_matrix_path = str(Path(output_csv).parent / "confusion_matrix.csv")
-    confusion_matrix_df.to_csv(confusion_matrix_path, index=False)
-    logger.info(f"Confusion matrix saved to: {confusion_matrix_path}")
+    return scaler, lr_model, decision_boundary
 
+def extract_features(df: pd.DataFrame, model, tokenizer, layer: int = 16, max_length: int = 512) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Extract features from the model for true and false responses."""
+    logger.info("Extracting features from model...")
+    
+    device = next(model.parameters()).device
+    model.eval()
+    
+    true_activations = []
+    false_activations = []
+    
+    with torch.no_grad():
+        for _, row in tqdm.tqdm(df.iterrows(), total=len(df), desc="Extracting features"):
+            # Tokenize true response
+            true_text = row["prompt"] + row["truthful_response"]
+            true_inputs = tokenizer(true_text, return_tensors="pt", truncation=True, max_length=max_length)
+            true_inputs = {k: v.to(device) for k, v in true_inputs.items()}
+            
+            # Get activations for true response
+            true_outputs = model(**true_inputs, output_hidden_states=True)
+            true_activation = true_outputs.hidden_states[layer][0, -1, :].cpu()  # Last token of layer
+            true_activations.append(true_activation)
+            
+            # Tokenize false response
+            false_text = row["prompt"] + row["deceptive_response"]
+            false_inputs = tokenizer(false_text, return_tensors="pt", truncation=True, max_length=max_length)
+            false_inputs = {k: v.to(device) for k, v in false_inputs.items()}
+            
+            # Get activations for false response
+            false_outputs = model(**false_inputs, output_hidden_states=True)
+            false_activation = false_outputs.hidden_states[layer][0, -1, :].cpu()  # Last token of layer
+            false_activations.append(false_activation)
+    
+    return torch.stack(true_activations), torch.stack(false_activations)
 
-def run_merge_step(
-    iteration1_csv: str,
-    iteration2_csv: str,
-    output_csv: str,
-    output_dataset_dir: Optional[str] = None,
-    create_rewarded: bool = False,
-    rewards: List[float] = [-1, 2, 1, 1],
-    remove_duplicates: bool = True,
-) -> bool:
-    """Run the merge step using the merge_test_datasets.py script."""
+def evaluate_probe(true_activations: torch.Tensor, false_activations: torch.Tensor, 
+                  scaler: StandardScaler, lr_model: LogisticRegression, 
+                  decision_boundary: float, probe_name: str) -> Dict[str, float]:
+    """Evaluate a single probe and return metrics."""
+    # Combine activations
+    all_activations = torch.cat([true_activations, false_activations], dim=0)
+    all_labels = np.concatenate([np.zeros(len(true_activations)), np.ones(len(false_activations))])
     
-    logger.info("Step 1: Merging test datasets...")
+    # Scale features
+    scaled_features = scaler.transform(all_activations.numpy())
     
-    cmd = [
-        sys.executable,
-        "solid_deception/data_generation/merge_test_datasets.py",
-        "--iteration1_csv", iteration1_csv,
-        "--iteration2_csv", iteration2_csv,
-        "--output_csv", output_csv,
-    ]
+    # Get predictions
+    predictions = lr_model.predict_proba(scaled_features)[:, 1]
     
-    if output_dataset_dir:
-        cmd.extend(["--output_dataset_dir", output_dataset_dir])
+    # Calculate metrics
+    tpr = np.mean(predictions[all_labels == 1] > decision_boundary)
+    fpr = np.mean(predictions[all_labels == 0] > decision_boundary)
+    auc = roc_auc_score(all_labels, predictions)
     
-    if create_rewarded:
-        cmd.extend(["--create_rewarded"])
-        cmd.extend(["--rewards"] + [str(r) for r in rewards])
-    
-    if not remove_duplicates:
-        cmd.append("--no_remove_duplicates")
-    
-    logger.info(f"Running merge command: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    
-    if result.returncode == 0:
-        logger.info("✅ Merge step completed successfully!")
-        if result.stdout:
-            logger.info(f"Merge output: {result.stdout}")
-        return True
-    else:
-        logger.error("❌ Merge step failed!")
-        logger.error(f"Error: {result.stderr}")
-        return False
+    return {
+        'probe_name': probe_name,
+        'tpr': tpr,
+        'fpr': fpr,
+        'auc': auc,
+        'decision_boundary': decision_boundary
+    }
 
-
-def run_evaluation_step(
-    merged_csv: str,
-    iteration1_lr_path: str,
-    iteration2_lr_path: str,
-    model_path: str,
-    tokenizer_path: str,
-    output_csv: str,
-    batch_size: int = 8,
-    layer: int = 16,
-    max_length: int = 512,
-    do_sae: bool = False,
-    sae_path: Optional[str] = None,
-    sae_words_path: Optional[str] = None,
-    sae_descriptions_path: Optional[str] = None,
-    all_positions: bool = False,
-) -> bool:
-    """Run the evaluation step using the evaluate_merged_probes.py script."""
+def calculate_confusion_matrix(true_activations: torch.Tensor, false_activations: torch.Tensor,
+                             scaler1: StandardScaler, lr1: LogisticRegression, db1: float,
+                             scaler2: StandardScaler, lr2: LogisticRegression, db2: float) -> np.ndarray:
+    """Calculate 2x2 confusion matrix showing overlap between probe detections."""
+    logger.info("Calculating confusion matrix...")
     
-    logger.info("Step 2: Evaluating linear probes...")
+    # Get predictions from both probes on false activations (lies)
+    scaled_features = scaler1.transform(false_activations.numpy())
+    probe1_predictions = lr1.predict_proba(scaled_features)[:, 1] > db1
     
-    cmd = [
-        sys.executable,
-        "solid_deception/data_generation/evaluate_merged_probes.py",
-        "--merged_csv", merged_csv,
-        "--iteration1_lr_path", iteration1_lr_path,
-        "--iteration2_lr_path", iteration2_lr_path,
-        "--model_path", model_path,
-        "--tokenizer_path", tokenizer_path,
-        "--output_csv", output_csv,
-        "--batch_size", str(batch_size),
-        "--layer", str(layer),
-        "--max_length", str(max_length),
-    ]
+    scaled_features = scaler2.transform(false_activations.numpy())
+    probe2_predictions = lr2.predict_proba(scaled_features)[:, 1] > db2
     
-    if do_sae:
-        cmd.append("--do_sae")
-        if sae_path:
-            cmd.extend(["--sae_path", sae_path])
-        if sae_words_path:
-            cmd.extend(["--sae_words_path", sae_words_path])
-        if sae_descriptions_path:
-            cmd.extend(["--sae_descriptions_path", sae_descriptions_path])
+    # Create confusion matrix
+    # Rows: probe2 detected/undetected
+    # Columns: probe1 detected/undetected
+    confusion_matrix = np.zeros((2, 2), dtype=int)
     
-    if all_positions:
-        cmd.append("--all_positions")
+    # Both detected
+    confusion_matrix[0, 0] = np.sum(probe1_predictions & probe2_predictions)
+    # Probe1 detected, probe2 undetected
+    confusion_matrix[0, 1] = np.sum(probe1_predictions & ~probe2_predictions)
+    # Probe1 undetected, probe2 detected
+    confusion_matrix[1, 0] = np.sum(~probe1_predictions & probe2_predictions)
+    # Both undetected
+    confusion_matrix[1, 1] = np.sum(~probe1_predictions & ~probe2_predictions)
     
-    logger.info(f"Running evaluation command: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    
-    if result.returncode == 0:
-        logger.info("✅ Evaluation step completed successfully!")
-        if result.stdout:
-            logger.info(f"Evaluation output: {result.stdout}")
-        
-        # Calculate and display confusion matrix
-        logger.info("Starting confusion matrix calculation...")
-        try:
-            calculate_confusion_matrix(merged_csv, iteration1_lr_path, iteration2_lr_path, model_path, tokenizer_path, output_csv, batch_size, layer, max_length, do_sae, sae_path, sae_words_path, sae_descriptions_path, all_positions)
-            logger.info("Confusion matrix calculation completed successfully!")
-        except Exception as e:
-            logger.error(f"Could not calculate confusion matrix: {e}")
-            import traceback
-            logger.error(f"Full traceback: {traceback.format_exc()}")
-        
-        return True
-    else:
-        logger.error("❌ Evaluation step failed!")
-        logger.error(f"Error: {result.stderr}")
-        return False
-
-
-def merge_and_evaluate_probes(
-    experiment_dir: str,
-    model_path: str,
-    tokenizer_path: str,
-    output_dir: Optional[str] = None,
-    batch_size: int = 8,
-    layer: int = 16,
-    max_length: int = 512,
-    do_sae: bool = False,
-    sae_path: Optional[str] = None,
-    sae_words_path: Optional[str] = None,
-    sae_descriptions_path: Optional[str] = None,
-    all_positions: bool = False,
-    create_rewarded: bool = False,
-    rewards: List[float] = [-1, 2, 1, 1],
-    remove_duplicates: bool = True,
-) -> bool:
-    """
-    Complete workflow to merge test datasets and evaluate probes.
-    
-    Args:
-        experiment_dir: Path to the experiment directory
-        model_path: Path to the model for feature extraction
-        tokenizer_path: Path to the tokenizer
-        output_dir: Directory to save outputs (defaults to experiment_dir/merged_evaluation)
-        batch_size: Batch size for feature extraction
-        layer: Layer to extract features from
-        max_length: Maximum sequence length
-        do_sae: Whether to use SAE features
-        sae_path: Path to SAE model
-        sae_words_path: Path to SAE words
-        sae_descriptions_path: Path to SAE descriptions
-        all_positions: Whether to use all positions
-        create_rewarded: Whether to create rewarded dataset
-        rewards: List of rewards for rewarded dataset
-        remove_duplicates: Whether to remove duplicate examples
-    
-    Returns:
-        True if both steps completed successfully, False otherwise
-    """
-    
-    # Set up paths
-    experiment_path = Path(experiment_dir)
-    if output_dir is None:
-        output_dir = experiment_path / "merged_evaluation"
-    else:
-        output_dir = Path(output_dir)
-    
-    # Create output directory
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Input paths
-    iteration1_csv = experiment_path / "iteration_1" / "detected.csv"
-    iteration2_csv = experiment_path / "iteration_2" / "detected.csv"
-    iteration1_lr_path = experiment_path / "iteration_1" / "lr.pkl"
-    iteration2_lr_path = experiment_path / "iteration_2" / "lr.pkl"
-    
-    # Output paths
-    merged_csv = output_dir / "merged_test.csv"
-    merged_dataset_dir = output_dir / "merged_test_dataset"
-    evaluation_results_csv = output_dir / "probe_evaluation_results.csv"
-    
-    # Validate input files
-    required_files = [
-        (iteration1_csv, "Iteration 1 detected CSV"),
-        (iteration2_csv, "Iteration 2 detected CSV"),
-        (iteration1_lr_path, "Iteration 1 LR model"),
-        (iteration2_lr_path, "Iteration 2 LR model"),
-    ]
-    
-    for file_path, description in required_files:
-        if not file_path.exists():
-            logger.error(f"❌ {description} not found: {file_path}")
-            return False
-    
-    logger.info("✅ All required files found!")
-    
-    # Step 1: Merge test datasets
-    merge_success = run_merge_step(
-        iteration1_csv=str(iteration1_csv),
-        iteration2_csv=str(iteration2_csv),
-        output_csv=str(merged_csv),
-        output_dataset_dir=str(merged_dataset_dir),
-        create_rewarded=create_rewarded,
-        rewards=rewards,
-        remove_duplicates=remove_duplicates,
-    )
-    
-    if not merge_success:
-        logger.error("❌ Merge step failed, aborting evaluation")
-        return False
-    
-    # Step 2: Evaluate probes
-    evaluation_success = run_evaluation_step(
-        merged_csv=str(merged_csv),
-        iteration1_lr_path=str(iteration1_lr_path),
-        iteration2_lr_path=str(iteration2_lr_path),
-        model_path=model_path,
-        tokenizer_path=tokenizer_path,
-        output_csv=str(evaluation_results_csv),
-        batch_size=batch_size,
-        layer=layer,
-        max_length=max_length,
-        do_sae=do_sae,
-        sae_path=sae_path,
-        sae_words_path=sae_words_path,
-        sae_descriptions_path=sae_descriptions_path,
-        all_positions=all_positions,
-    )
-    
-    if evaluation_success:
-        logger.info("🎉 Complete workflow finished successfully!")
-        logger.info(f"📁 Output directory: {output_dir}")
-        logger.info(f"📄 Merged test CSV: {merged_csv}")
-        logger.info(f"📄 Evaluation results: {evaluation_results_csv}")
-        return True
-    else:
-        logger.error("❌ Evaluation step failed")
-        return False
-
+    return confusion_matrix
 
 def main():
-    """Main function to parse arguments and run the complete workflow."""
-    parser = argparse.ArgumentParser(
-        description="Merge test datasets and evaluate linear probes from two iterations"
-    )
-    parser.add_argument(
-        "--experiment_dir",
-        type=str,
-        required=True,
-        help="Path to the experiment directory (e.g., outputs/20241201_143022)"
-    )
-    parser.add_argument(
-        "--model_path",
-        type=str,
-        required=True,
-        help="Path to the model for feature extraction"
-    )
-    parser.add_argument(
-        "--tokenizer_path",
-        type=str,
-        required=True,
-        help="Path to the tokenizer"
-    )
-    parser.add_argument(
-        "--output_dir",
-        type=str,
-        default=None,
-        help="Directory to save outputs (defaults to experiment_dir/merged_evaluation)"
-    )
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=8,
-        help="Batch size for feature extraction"
-    )
-    parser.add_argument(
-        "--layer",
-        type=int,
-        default=16,
-        help="Layer to extract features from"
-    )
-    parser.add_argument(
-        "--max_length",
-        type=int,
-        default=512,
-        help="Maximum sequence length"
-    )
-    parser.add_argument(
-        "--do_sae",
-        action="store_true",
-        help="Whether to use SAE features"
-    )
-    parser.add_argument(
-        "--sae_path",
-        type=str,
-        default=None,
-        help="Path to SAE model"
-    )
-    parser.add_argument(
-        "--sae_words_path",
-        type=str,
-        default=None,
-        help="Path to SAE words"
-    )
-    parser.add_argument(
-        "--sae_descriptions_path",
-        type=str,
-        default=None,
-        help="Path to SAE descriptions"
-    )
-    parser.add_argument(
-        "--all_positions",
-        action="store_true",
-        help="Whether to use all positions"
-    )
-    parser.add_argument(
-        "--create_rewarded",
-        action="store_true",
-        help="Whether to create rewarded dataset"
-    )
-    parser.add_argument(
-        "--rewards",
-        type=float,
-        nargs=4,
-        default=[-1, 2, 1, 1],
-        help="Rewards [deceptive_false, deceptive_true, truthful_false, truthful_true]"
-    )
-    parser.add_argument(
-        "--no_remove_duplicates",
-        action="store_true",
-        help="Don't remove duplicate examples based on ID"
-    )
+    parser = argparse.ArgumentParser(description="Merge test datasets and evaluate probes with confusion matrix")
+    parser.add_argument("--csv1", type=str, required=True, help="Path to first test CSV")
+    parser.add_argument("--csv2", type=str, required=True, help="Path to second test CSV")
+    parser.add_argument("--lr1", type=str, required=True, help="Path to LR model from iteration 1")
+    parser.add_argument("--lr2", type=str, required=True, help="Path to LR model from iteration 2")
+    parser.add_argument("--model_path", type=str, required=True, help="Path to the model for feature extraction")
+    parser.add_argument("--tokenizer_path", type=str, required=True, help="Path to the tokenizer")
+    parser.add_argument("--output_csv", type=str, default="merged_test_dataset.csv", help="Output path for merged dataset")
+    parser.add_argument("--results_csv", type=str, default="evaluation_results.csv", help="Output path for evaluation results")
+    parser.add_argument("--layer", type=int, default=16, help="Layer to extract features from")
+    parser.add_argument("--max_length", type=int, default=512, help="Maximum sequence length")
     
     args = parser.parse_args()
     
-    # Validate experiment directory
-    if not os.path.exists(args.experiment_dir):
-        logger.error(f"❌ Experiment directory not found: {args.experiment_dir}")
-        return 1
-    
-    # Run the complete workflow
-    success = merge_and_evaluate_probes(
-        experiment_dir=args.experiment_dir,
-        model_path=args.model_path,
-        tokenizer_path=args.tokenizer_path,
-        output_dir=args.output_dir,
-        batch_size=args.batch_size,
-        layer=args.layer,
-        max_length=args.max_length,
-        do_sae=args.do_sae,
-        sae_path=args.sae_path,
-        sae_words_path=args.sae_words_path,
-        sae_descriptions_path=args.sae_descriptions_path,
-        all_positions=args.all_positions,
-        create_rewarded=args.create_rewarded,
-        rewards=args.rewards,
-        remove_duplicates=not args.no_remove_duplicates,
-    )
-    
-    return 0 if success else 1
-
+    try:
+        # Step 1: Merge test datasets
+        merged_csv = merge_test_datasets(args.csv1, args.csv2, args.output_csv)
+        
+        # Step 2: Load model and tokenizer
+        logger.info("Loading model and tokenizer...")
+        model = AutoModelForCausalLM.from_pretrained(args.model_path, torch_dtype=torch.float16, device_map="auto")
+        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
+        
+        # Step 3: Load merged dataset
+        df = pd.read_csv(merged_csv)
+        test_df = df[df["split"] == "test_merged"].copy()
+        logger.info(f"Evaluating on {len(test_df)} test examples")
+        
+        # Step 4: Extract features
+        true_activations, false_activations = extract_features(test_df, model, tokenizer, args.layer, args.max_length)
+        
+        # Step 5: Load LR models
+        logger.info("Loading LR models...")
+        scaler1, lr1, db1 = load_lr_model(args.lr1)
+        scaler2, lr2, db2 = load_lr_model(args.lr2)
+        
+        # Step 6: Evaluate both probes
+        logger.info("Evaluating probes...")
+        results = []
+        
+        results.append(evaluate_probe(true_activations, false_activations, scaler1, lr1, db1, "Iteration 1 Probe"))
+        results.append(evaluate_probe(true_activations, false_activations, scaler2, lr2, db2, "Iteration 2 Probe"))
+        
+        # Step 7: Calculate confusion matrix
+        confusion_matrix = calculate_confusion_matrix(
+            true_activations, false_activations, scaler1, lr1, db1, scaler2, lr2, db2
+        )
+        
+        # Step 8: Print results
+        print("\n" + "="*60)
+        print("EVALUATION RESULTS")
+        print("="*60)
+        
+        for result in results:
+            print(f"\n{result['probe_name']}:")
+            print(f"  True Positive Rate (TPR): {result['tpr']:.4f}")
+            print(f"  False Positive Rate (FPR): {result['fpr']:.4f}")
+            print(f"  Area Under Curve (AUC): {result['auc']:.4f}")
+            print(f"  Decision Boundary: {result['decision_boundary']:.4f}")
+        
+        print(f"\n" + "="*60)
+        print("CONFUSION MATRIX")
+        print("="*60)
+        print("Rows: Probe2 detected/undetected")
+        print("Columns: Probe1 detected/undetected")
+        print(f"\n{confusion_matrix}")
+        
+        # Save confusion matrix
+        confusion_df = pd.DataFrame(
+            confusion_matrix,
+            index=['Probe2 Detected', 'Probe2 Undetected'],
+            columns=['Probe1 Detected', 'Probe1 Undetected']
+        )
+        confusion_df.to_csv('confusion_matrix.csv', index=True)
+        print(f"\nConfusion matrix saved to confusion_matrix.csv")
+        
+        # Save evaluation results
+        results_df = pd.DataFrame(results)
+        results_df.to_csv(args.results_csv, index=False)
+        logger.info(f"Evaluation results saved to {args.results_csv}")
+        
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        raise
 
 if __name__ == "__main__":
-    exit(main()) 
+    main() 
