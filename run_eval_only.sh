@@ -42,9 +42,15 @@ export SFT_DIR=$ITERATION_DIR/sft
 export POLICY_DIR=$ITERATION_DIR/policy
 export EVAL_OUT_DIR=$ITERATION_DIR/eval
 
-# Model paths
-export BASE_MODEL_PATH=meta-llama/Llama-3.2-1B-Instruct
-export BASE_POLICY_PATH="$P/outputs/$TAG/iteration_1/policy_adapter"
+# Model paths: Set BASE_MODEL_PATH and BASE_POLICY_PATH according to iteration
+# See run_iterative.sh: for iteration 1, BASE_POLICY_PATH is the base model; for iteration >1, it's previous iteration's policy_adapter
+if [ "$ITERATION" -eq 1 ]; then
+    export BASE_MODEL_PATH="meta-llama/Llama-3.2-1B-Instruct"
+    export BASE_POLICY_PATH="meta-llama/Llama-3.2-1B-Instruct"
+else
+    export BASE_MODEL_PATH="meta-llama/Llama-3.2-1B-Instruct"
+    export BASE_POLICY_PATH="$P/outputs/$TAG/iteration_$((ITERATION-1))/policy_adapter"
+fi
 
 # Set up SFT path for evaluation
 export EVAL_SFT_PATH="${SFT_DIR}_adapter"
@@ -98,6 +104,8 @@ fi
 
 echo "=========================================="
 echo "Running EVALUATION ONLY for TPR=$TPR, SEED=$SEED, Iteration $ITERATION"
+echo "Base policy: $BASE_POLICY_PATH"
+echo "Base model: $BASE_MODEL_PATH"
 echo "Time: $(date)"
 echo "=========================================="
 
