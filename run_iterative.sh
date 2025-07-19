@@ -289,8 +289,8 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
         echo "MADE DATASET for iteration $iteration at $(date)" >> $ITERATION_LOGFILE
     fi
     
-    # TRAIN SFT
-    if ! grep -q "TRAINED SFT at" $ITERATION_LOGFILE; then
+    # TRAIN SFT (only on first iteration)
+    if [ $iteration -eq 1 ] && ! grep -q "TRAINED SFT at" $ITERATION_LOGFILE; then
         echo "STARTING SFT for iteration $iteration at $(date)" >> $ITERATION_LOGFILE
         accelerate launch \
             --config_file $ACONFIG \
@@ -314,6 +314,8 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
             --experiment_set_name $TAG \
             2>&1 | tee -a $ITERATION_LOGFILE
         echo "TRAINED SFT for iteration $iteration at $(date)" >> $ITERATION_LOGFILE
+    elif [ $iteration -gt 1 ]; then
+        echo "SKIPPING SFT for iteration $iteration (SFT only done on first iteration)" >> $ITERATION_LOGFILE
     fi
     
     # TRAIN RM (if not DPO)
@@ -421,13 +423,23 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
         # TRAIN DPO
         if ! grep -q "TRAINED DPO at" $ITERATION_LOGFILE; then
             echo "STARTING DPO for iteration $iteration at $(date)" >> $ITERATION_LOGFILE
+            
+            # For iteration 1, use SFT model; for later iterations, use policy from previous iteration
+            if [ $iteration -eq 1 ]; then
+                PRE_DPO_MODEL_PATH="${SFT_DIR}_adapter"
+                echo "DPO loading SFT model: $PRE_DPO_MODEL_PATH" >> $ITERATION_LOGFILE
+            else
+                PRE_DPO_MODEL_PATH="${EXPERIMENT_SET_DIRECTORY}/iteration_$((iteration-1))/policy_adapter"
+                echo "DPO loading policy model from previous iteration: $PRE_DPO_MODEL_PATH" >> $ITERATION_LOGFILE
+            fi
+            
             accelerate launch \
                 --config_file $ACONFIG \
                 --main_process_port $MASTER_PORT \
                 $P/solid_deception/training/train_dpo.py \
                 --dataset_name $DATASET_PATH \
                 --output_dir $POLICY_DIR \
-                --model_name_or_path "${SFT_DIR}_adapter" \
+                --model_name_or_path "$PRE_DPO_MODEL_PATH" \
                 --per_device_train_batch_size $DPO_PDTBS \
                 --eval_steps 400 \
                 --label_smoothing_factor 0.05 \
@@ -487,6 +499,40 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
     
     echo "=== Completed Iteration $iteration ===" >> $LOGFILE
 done
+
+# MERGE AND EVALUATE PROBES (only if more than 1 iteration)
+if [ $NUM_ITERATIONS -gt 1 ]; then
+    echo "=== Starting Merge and Evaluate Probes ===" >> $LOGFILE
+    echo "STARTING MERGE AND EVALUATE at $(date)" >> $LOGFILE
+    
+    # Set up merge and evaluate specific variables
+    export MERGE_EVAL_LOGFILE="$EXPERIMENT_SET_DIRECTORY/merge_eval_stdout_err.log"
+    export MERGE_EVAL_RUN_NAME="merge_and_evaluate_probes_$TAG"
+    
+    if [ ! -f "$MERGE_EVAL_LOGFILE" ]; then
+        touch "$MERGE_EVAL_LOGFILE"
+    fi
+    
+    # Run merge and evaluate script
+    python $P/solid_deception/data_generation/merge_and_evaluate_probes.py \
+        --csv1 "$EXPERIMENT_SET_DIRECTORY/iteration_1/munged_data.csv" \
+        --csv2 "$EXPERIMENT_SET_DIRECTORY/iteration_2/munged_data.csv" \
+        --lr1 "$EXPERIMENT_SET_DIRECTORY/iteration_1/lr.pkl" \
+        --lr2 "$EXPERIMENT_SET_DIRECTORY/iteration_2/lr.pkl" \
+        --model_path $BASE_MODEL_PATH \
+        --tokenizer_path $BASE_MODEL_PATH \
+        --output_csv "$EXPERIMENT_SET_DIRECTORY/merged_test_dataset.csv" \
+        --results_csv "$EXPERIMENT_SET_DIRECTORY/evaluation_results.csv" \
+        --layer $LAYER \
+        --max_length $MAX_DETECTOR_SEQ_LENGTH \
+        --run_name $MERGE_EVAL_RUN_NAME \
+        2>&1 | tee -a $MERGE_EVAL_LOGFILE
+    
+    echo "FINISHED MERGE AND EVALUATE at $(date)" >> $LOGFILE
+    echo "=== Completed Merge and Evaluate Probes ===" >> $LOGFILE
+else
+    echo "Skipping merge and evaluate (only 1 iteration)" >> $LOGFILE
+fi
 
 echo "Iterative SOLiD Training completed at $(date)" >> $LOGFILE
 echo "DONE!" 
