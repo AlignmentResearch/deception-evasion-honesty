@@ -23,7 +23,7 @@ export H1_FRAC=0.5
 export BASE_POLICY_PATH="meta-llama/Llama-3.2-1B-Instruct"  # Start with original model
 
 # Debug mode - set to true to use only 5% of data for fast iteration
-export SUBSAMPLE_DATASET=true
+export SUBSAMPLE_DATASET=false
 
 # Setting up file locations (organizational)
 export LOGFILE="$EXPERIMENT_SET_DIRECTORY/iterative_stdout_err.log"
