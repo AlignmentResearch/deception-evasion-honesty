@@ -2,7 +2,7 @@
 """
 Single script to merge test datasets and evaluate linear probes with confusion matrix.
 """
-
+import os
 import argparse
 import logging
 import pandas as pd
@@ -16,6 +16,9 @@ from sklearn.metrics import roc_auc_score
 import pickle
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import tqdm
+import matplotlib.pyplot as plt
+import seaborn as sns
+import wandb
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -149,14 +152,113 @@ def calculate_confusion_matrix(true_activations: torch.Tensor, false_activations
     
     # Both detected
     confusion_matrix[0, 0] = np.sum(probe1_predictions & probe2_predictions)
-    # Probe1 detected, probe2 undetected
-    confusion_matrix[0, 1] = np.sum(probe1_predictions & ~probe2_predictions)
     # Probe1 undetected, probe2 detected
-    confusion_matrix[1, 0] = np.sum(~probe1_predictions & probe2_predictions)
+    confusion_matrix[0, 1] = np.sum(~probe1_predictions & probe2_predictions)
+    # Probe1 detected, probe2 undetected
+    confusion_matrix[1, 0] = np.sum(probe1_predictions & ~probe2_predictions)
     # Both undetected
     confusion_matrix[1, 1] = np.sum(~probe1_predictions & ~probe2_predictions)
     
     return confusion_matrix
+
+def plot_confusion_matrix(confusion_matrix: np.ndarray, results: list, output_path: str):
+    """Create and save a plot of the confusion matrix."""
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+    
+    # Create heatmap
+    sns.heatmap(
+        confusion_matrix,
+        annot=True,
+        fmt='d',
+        cmap='Blues',
+        ax=ax,
+        cbar_kws={'label': 'Count'}
+    )
+    
+    # Get TPRs from results
+    probe1_tpr = results[0]['tpr']
+    probe2_tpr = results[1]['tpr']
+    
+    ax.set_title(f'Lie Detection Overlap Matrix\nProbe 1 TPR: {probe1_tpr:.3f}, Probe 2 TPR: {probe2_tpr:.3f}')
+    ax.set_xlabel('Probe 1')
+    ax.set_ylabel('Probe 2')
+    ax.set_xticklabels(['Detected Lie', 'Undetected Lie'])
+    ax.set_yticklabels(['Detected Lie', 'Undetected Lie'])
+    
+    # Save plot
+    plot_path = Path(output_path).parent / "confusion_matrix_plot.png"
+    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    print(f"Saved confusion matrix plot to {plot_path}")
+    plt.close()
+
+def log_to_wandb(results: list, confusion_matrix: np.ndarray, output_path: str):
+    """Log results to wandb."""
+    try:
+        # Initialize wandb with run name from environment variable
+        run_name = os.environ.get("WANDB_RUN_ID", "merge_and_evaluate_probes")
+        wandb.init(name=run_name)
+        
+        # Log config
+        wandb.config.update({
+            "experiment_type": "MergedProbeEvaluation",
+            "n_probes": len(results)
+        })
+        
+        # Log metrics for each probe
+        for i, result in enumerate(results):
+            probe_name = f"probe_{i+1}"
+            wandb.log({
+                f"{probe_name}_tpr": result['tpr'],
+                f"{probe_name}_fpr": result['fpr'],
+                f"{probe_name}_auc": result['auc'],
+                f"{probe_name}_decision_boundary": result['decision_boundary']
+            })
+        
+        # Log confusion matrix as image
+        fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+        sns.heatmap(
+            confusion_matrix,
+            annot=True,
+            fmt='d',
+            cmap='Blues',
+            ax=ax,
+            cbar_kws={'label': 'Count'}
+        )
+        ax.set_title('Lie Detection Overlap Matrix')
+        ax.set_xlabel('Probe 1')
+        ax.set_ylabel('Probe 2')
+        ax.set_xticklabels(['Detected Lie', 'Undetected Lie'])
+        ax.set_yticklabels(['Detected Lie', 'Undetected Lie'])
+        
+        wandb.log({"confusion_matrix_plot": wandb.Image(fig)})
+        plt.close()
+        
+        # Log confusion matrix as table
+        confusion_df = pd.DataFrame(
+            confusion_matrix,
+            index=['Probe2_Detected', 'Probe2_Undetected'],
+            columns=['Probe1_Detected', 'Probe1_Undetected']
+        )
+        wandb.log({"confusion_matrix_table": wandb.Table(dataframe=confusion_df)})
+        
+        # Calculate overlap statistics
+        n_lies = np.sum(confusion_matrix)
+        actual_overlap = confusion_matrix[0, 0] / n_lies if n_lies > 0 else 0
+        expected_overlap = (results[0]['tpr'] * results[1]['tpr']) if n_lies > 0 else 0
+        overlap_ratio = actual_overlap / expected_overlap if expected_overlap > 0 else 0
+        
+        wandb.log({
+            "actual_overlap": actual_overlap,
+            "expected_overlap": expected_overlap,
+            "overlap_ratio": overlap_ratio,
+            "n_lies": n_lies
+        })
+        
+        wandb.finish()
+        print("Logged results to wandb")
+        
+    except Exception as e:
+        logger.warning(f"Failed to log to wandb: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description="Merge test datasets and evaluate probes with confusion matrix")
@@ -235,10 +337,16 @@ def main():
         confusion_df.to_csv('confusion_matrix.csv', index=True)
         print(f"\nConfusion matrix saved to confusion_matrix.csv")
         
+        # Create and save plot
+        plot_confusion_matrix(confusion_matrix, results, args.output_csv)
+        
         # Save evaluation results
         results_df = pd.DataFrame(results)
         results_df.to_csv(args.results_csv, index=False)
         logger.info(f"Evaluation results saved to {args.results_csv}")
+        
+        # Log to wandb
+        log_to_wandb(results, confusion_matrix, args.output_csv)
         
     except Exception as e:
         logger.error(f"Error: {e}")

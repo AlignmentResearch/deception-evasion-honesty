@@ -8,6 +8,15 @@ import subprocess
 def main():
     # Example command to run the merge and evaluate script
     base_path = "/workspace/deception-evasion-honesty/outputs/20250719_160214"
+    
+    # Extract timestamp from base_path
+    timestamp = base_path.split("/")[-1]
+    
+    # Set wandb project
+    import os
+    os.environ["WANDB_PROJECT"] = "solid_deception_iterative"
+    os.environ["WANDB_RUN_ID"] = f"merge_and_evaluate_probes_{timestamp}"
+    
     cmd = [
         "python", "solid_deception/data_generation/merge_and_evaluate_probes.py",
         "--csv1", f"{base_path}/iteration_1/munged_data.csv",
