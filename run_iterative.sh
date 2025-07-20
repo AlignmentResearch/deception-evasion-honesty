@@ -82,7 +82,7 @@ export RM_PDTBS=$((BASE_PDTBS * 2))
 
 # SFT
 export SFT_LOGICAL_BATCH_SIZE=128
-export SFT_PDTBS=$((BASE_PDTBS))
+export SFT_PDTBS=$((BASE_PDTBS / 2))
 export SFT_LR=1e-5
 
 # GRPO
