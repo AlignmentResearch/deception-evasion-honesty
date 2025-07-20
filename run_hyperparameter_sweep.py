@@ -16,6 +16,7 @@ from typing import Dict, List, Any
 
 
 SUBSAMPLE_DATASET = True
+DEBUG_TRAINING = True
 
 def run_experiment(config: Dict[str, Any], config_name: str) -> bool:
     """
@@ -81,7 +82,7 @@ def main():
             "config": {
                 "SEED": 42,
                 "LIE_TPR": 0.8,
-                "DEBUG_TRAINING": False,
+                "DEBUG_TRAINING": DEBUG_TRAINING,
                 "SUBSAMPLE_DATASET": SUBSAMPLE_DATASET,
                 "NUM_ITERATIONS": 1
             }
@@ -91,7 +92,7 @@ def main():
             "config": {
                 "SEED": 42,
                 "LIE_TPR": 0.8,
-                "DEBUG_TRAINING": False,
+                "DEBUG_TRAINING": DEBUG_TRAINING,
                 "SUBSAMPLE_DATASET": SUBSAMPLE_DATASET,
                 "NUM_ITERATIONS": 2
             }
@@ -116,11 +117,8 @@ def main():
     for i, config_info in enumerate(hyperparameter_configs, 1):
         print(f"  {i}. {config_info['name']}: {config_info['config']}")
     
-    # Ask for confirmation
-    response = input("\nProceed with all configurations? (y/N): ").strip().lower()
-    if response not in ['y', 'yes']:
-        print("Aborted by user.")
-        sys.exit(0)
+    # Auto-proceed with all configurations
+    print("\nProceeding with all configurations automatically...")
     
     # Track results
     successful_runs = []

@@ -179,7 +179,7 @@ fi
 # Debug mode - just reduce data size to 5%
 if $SUBSAMPLE_DATASET; then
     echo "Using 5% of data" >> $LOGFILE
-    export DEBUG_FRAC=0.05
+    export DEBUG_FRAC=0.01
 else
     export DEBUG_FRAC=""
 fi
@@ -224,8 +224,8 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
     # Set the base model for this iteration
     export BASE_MODEL_PATH=$BASE_POLICY_PATH
     
-    # Set up SFT path for evaluation
-    export EVAL_SFT_PATH="${SFT_DIR}_adapter"
+    # Set up SFT path for evaluation - always use iteration 1 SFT model
+    export EVAL_SFT_PATH="${EXPERIMENT_SET_DIRECTORY}/iteration_1/sft_adapter"
     if $DO_DPO; then
         export RM_OUTPUT_DIR="None"
     else
