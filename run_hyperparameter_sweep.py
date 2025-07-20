@@ -76,22 +76,59 @@ def main():
     # Define hyperparameter configurations
     # Each configuration is a dictionary with the 5 key hyperparameters
     hyperparameter_configs: List[Dict[str, Any]] = [
+
         {
-            "name": "baseline_1iter",
+            "name": "low_TPR_2iter",
             "config": {
-                "SEED": 42,
-                "LIE_TPR": 0.8,
-                "SUBSAMPLE_DATASET": SUBSAMPLE_DATASET,
+                "SEED": 123,
+                "LIE_TPR": 0.6,
+                "SUBSAMPLE_DATASET": False,
+                "NUM_ITERATIONS": 2
+            }
+        },
+        {
+            "name": "low_TPR_1iter",
+            "config": {
+                "SEED": 123,
+                "LIE_TPR": 0.6,
+                "SUBSAMPLE_DATASET": False,
                 "NUM_ITERATIONS": 1
             }
         },
         {
-            "name": "baseline_2iter",
+            "name": "high_TPR_2iter",
             "config": {
-                "SEED": 42,
-                "LIE_TPR": 0.8,
-                "SUBSAMPLE_DATASET": SUBSAMPLE_DATASET,
+                "SEED": 123,
+                "LIE_TPR": 0.99,
+                "SUBSAMPLE_DATASET": False,
                 "NUM_ITERATIONS": 2
+            }
+        },
+        {
+            "name": "high_TPR_1iter",
+            "config": {
+                "SEED": 123,
+                "LIE_TPR": 0.99,
+                "SUBSAMPLE_DATASET": False,
+                "NUM_ITERATIONS": 1
+            }
+        },
+                {
+            "name": "mid_TPR_2iter",
+            "config": {
+                "SEED": 123,
+                "LIE_TPR": 0.6,
+                "SUBSAMPLE_DATASET": False,
+                "NUM_ITERATIONS": 2
+            }
+        },
+        {
+            "name": "mid_TPR_1iter",
+            "config": {
+                "SEED": 123,
+                "LIE_TPR": 0.6,
+                "SUBSAMPLE_DATASET": False,
+                "NUM_ITERATIONS": 1
             }
         },
 
