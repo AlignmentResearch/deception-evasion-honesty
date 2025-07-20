@@ -292,7 +292,7 @@ def main():
     parser.add_argument("--run_name", type=str, default=None, help="Wandb run name")
     parser.add_argument("--seed", type=int, default=None, help="Random seed used in training")
     parser.add_argument("--lie_tpr", type=float, default=None, help="Lie true positive rate")
-    parser.add_argument("--debug_training", type=str, default=None, help="Whether debug training was used")
+    parser.add_argument("--debug_training", type=str, default=None, help="Whether debug training was used (kept for compatibility but not used)")
     parser.add_argument("--subsample_dataset", type=str, default=None, help="Whether dataset was subsampled")
     parser.add_argument("--num_iterations", type=int, default=None, help="Number of iterations")
     
@@ -304,8 +304,33 @@ def main():
         
         # Step 2: Load model and tokenizer
         logger.info("Loading model and tokenizer...")
-        model = AutoModelForCausalLM.from_pretrained(args.model_path, torch_dtype=torch.float16, device_map="auto")
-        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
+        
+        # Handle LoRA adapters properly
+        if os.path.exists(os.path.join(args.model_path, "adapter_config.json")):
+            # Loading from LoRA adapter - need to load base model first
+            logger.info(f"Loading from LoRA adapter: {args.model_path}")
+            from peft import AutoPeftModelForCausalLM
+            model = AutoPeftModelForCausalLM.from_pretrained(
+                args.model_path, 
+                torch_dtype=torch.float16, 
+                device_map="auto"
+            )
+            # Merge the adapter with the base model
+            model = model.merge_and_unload()
+            logger.info("Merged LoRA adapter with base model")
+        else:
+            # Loading from full model
+            model = AutoModelForCausalLM.from_pretrained(args.model_path, torch_dtype=torch.float16, device_map="auto")
+        
+        # Load tokenizer from base model path if using adapter, otherwise from provided path
+        if os.path.exists(os.path.join(args.tokenizer_path, "adapter_config.json")):
+            # Use base model tokenizer for adapters
+            tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B-Instruct")
+            logger.info("Loaded tokenizer from base model (meta-llama/Llama-3.2-1B-Instruct)")
+        else:
+            # Use the provided tokenizer path
+            tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
+            logger.info(f"Loaded tokenizer from: {args.tokenizer_path}")
         
         # Step 3: Load merged dataset
         df = pd.read_csv(merged_csv)
