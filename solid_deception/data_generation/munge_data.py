@@ -237,7 +237,13 @@ def create_iterative_splits(
     # Split into h1 and h2
     n_h1_examples = int(len(examples) * h1_frac)
     h1_examples = examples.select(range(n_h1_examples))
-    h2_examples = examples.select(range(n_h1_examples, len(examples)))
+    
+    # Handle case where h1_frac = 1.0 (all data goes to h1)
+    if n_h1_examples == len(examples):
+        # Create empty h2 dataset with same schema
+        h2_examples = examples.select([])
+    else:
+        h2_examples = examples.select(range(n_h1_examples, len(examples)))
     
     if iteration == 1:
         # For first iteration, use h1 for training
