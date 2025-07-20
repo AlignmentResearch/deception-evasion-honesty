@@ -486,7 +486,7 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
             --lr_path $LR_PATH \
             --layer $LAYER \
             --output_dir $EVAL_OUT_DIR \
-            --n_rows 20 \
+            --n_rows 100 \
             --experiment_set_name $TAG \
             --run_name $EVAL_RUN_NAME \
             --sae_path $SAE_PATH \
