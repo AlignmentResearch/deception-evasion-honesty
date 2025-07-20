@@ -27,7 +27,12 @@ def main():
         "--tokenizer_path", "meta-llama/Llama-3.2-1B-Instruct",
         "--output_csv", f"{base_path}/merged_test_dataset.csv",
         "--results_csv", f"{base_path}/evaluation_results.csv",
-        "--run_name", f"merge_and_evaluate_probes_{timestamp}"
+        "--run_name", f"merge_and_evaluate_probes_{timestamp}",
+        "--seed", "0",  # Default values for standalone run
+        "--lie_tpr", "0.9",
+        "--debug_training", "false",
+        "--subsample_dataset", "false",
+        "--num_iterations", "2"
     ]
     
     print("Running command:")
