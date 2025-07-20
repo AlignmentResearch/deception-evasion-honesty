@@ -16,7 +16,7 @@ from typing import Dict, List, Any
 
 
 SUBSAMPLE_DATASET = True
-DEBUG_TRAINING = True
+DEBUG_TRAINING = False
 
 def run_experiment(config: Dict[str, Any], config_name: str) -> bool:
     """
