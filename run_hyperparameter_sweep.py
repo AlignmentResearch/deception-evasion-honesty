@@ -113,7 +113,7 @@ def main():
                 "NUM_ITERATIONS": 1
             }
         },
-                {
+        {
             "name": "mid_TPR_2iter",
             "config": {
                 "SEED": 123,
