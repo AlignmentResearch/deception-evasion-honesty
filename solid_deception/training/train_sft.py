@@ -46,7 +46,7 @@ WANDB_PROJECT = os.environ.get("WANDB_PROJECT", "")
 
 @dataclass
 class MySFTScriptArguments(SFTScriptArguments):
-    debug_training: bool = False
+    debug_training: bool = False  # Keep for compatibility but not used
     experiment_set_name: Optional[str] = None
     logical_batch_size: Optional[int] = None
     experiment_type: str = "SFT"
@@ -216,14 +216,6 @@ if __name__ == "__main__":
         return output_texts
 
     ds = load_from_disk(args.dataset_name, keep_in_memory=False)  # type: ignore
-    if args.debug_training:  # type: ignore
-        if len(ds["train"]) > 2048:
-            ds = DatasetDict(
-                {
-                    "train": ds["train"].select(range(2048)),  # type: ignore
-                    "test": ds["test"].select(range(2048)),  # type: ignore
-                }
-            )
 
     def process(row):
         return row

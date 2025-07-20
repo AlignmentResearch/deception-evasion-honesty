@@ -346,7 +346,7 @@ class MyGRPOConfig(RLOOConfig):
     no_naive_pg_gradient: bool = False
     response_length: int = 103
     max_length: int = 768
-    debug_training: bool = False
+    debug_training: bool = False  # Keep for compatibility but not used
     profile: bool = False
     experiment_set_name: Optional[str] = None
     logical_batch_size: Optional[int] = None

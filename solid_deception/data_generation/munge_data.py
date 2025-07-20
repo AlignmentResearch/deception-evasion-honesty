@@ -312,6 +312,10 @@ def create_and_save_dataset(
 def main(args) -> None:
     """Main function to process and save the dataset."""
 
+    # DEBUG: Print all arguments to understand what we're receiving
+    print(f"DEBUG: All arguments received: {args}")
+    print(f"DEBUG: debug_frac argument: {getattr(args, 'debug_frac', 'NOT_SET')}")
+
     input_path = args.input_path
     csv_output_path = args.csv_output_path
     test_frac = args.test_frac
@@ -340,10 +344,19 @@ def main(args) -> None:
     
     # Debug mode: sample a percentage of the dataset
     debug_frac = getattr(args, 'debug_frac', None)
+    print(f"DEBUG: debug_frac value: {debug_frac}")
+    print(f"DEBUG: debug_frac type: {type(debug_frac)}")
+    print(f"DEBUG: debug_frac < 1.0: {debug_frac < 1.0 if debug_frac is not None else 'N/A'}")
+    
     if debug_frac is not None and debug_frac < 1.0:
         n_debug_examples = int(len(examples) * debug_frac)
+        print(f"DEBUG: Original dataset size: {len(examples)}")
+        print(f"DEBUG: Will sample {n_debug_examples} examples")
         examples = examples.select(np.random.choice(len(examples), n_debug_examples, replace=False))
         logger.info(f"DEBUG MODE: Sampled {len(examples)} examples ({debug_frac*100:.1f}% of original)")
+        print(f"DEBUG: After sampling, dataset size: {len(examples)}")
+    else:
+        print(f"DEBUG: Not applying debug sampling. debug_frac={debug_frac}")
     
     if hasattr(args, 'iterative') and args.iterative:
         # Use iterative splitting for h1/h2

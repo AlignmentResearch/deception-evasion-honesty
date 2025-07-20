@@ -46,7 +46,7 @@ class NoSaveAtEndCallback(TrainingArguments):
 
 @dataclass
 class MyDPOScriptArguments(DPOScriptArguments):
-    debug_training: bool = False
+    debug_training: bool = False  # Keep for compatibility but not used
     logical_batch_size: Optional[int] = None
     experiment_set_name: Optional[str] = None
     experiment_type: str = "DPO"
@@ -204,36 +204,29 @@ if __name__ == "__main__":
     ################
 
     ds = load_from_disk(args.dataset_name, keep_in_memory=True)  # type: ignore
-    if args.debug_training:  # type: ignore
-        ds = DatasetDict(
-            {
-                "train": ds["train"].select(range(100)),  # type: ignore
-                "test": ds["test"].select(range(100)),  # type: ignore
-            }
-        )
-    else:
-        null_answers = open(args.null_answer_path, "r").readlines()  # type: ignore
-        null_answers = [a[:-1] if a[-1] == "\n" else a for a in null_answers]
-        for example, null_answer in zip(ds["train"], null_answers):
-            new_example = deepcopy(example)
-            new_example["rejected"] = null_answer  # type: ignore
-            ds["train"] = ds["train"].add_item(example)  # type: ignore
 
-        if not args.debug_training:  # type: ignore
-            # If we just add all the null examples to the start of the dataset,
-            # this won't train very much on them since the LR is low
-            for i in range(1_000, len(ds["train"]), len(ds["train"]) // 5):
-                for j, (example, null_answer) in enumerate(
-                    zip(ds["train"][i // 2 :]["rejected"], null_answers)  # type: ignore
-                ):
-                    new_example = deepcopy(ds["train"][j])
-                    new_example["rejected"] = null_answer
-                    ds["train"] = ds["train"].add_item(new_example)  # type: ignore
+    null_answers = open(args.null_answer_path, "r").readlines()  # type: ignore
+    null_answers = [a[:-1] if a[-1] == "\n" else a for a in null_answers]
+    for example, null_answer in zip(ds["train"], null_answers):
+        new_example = deepcopy(example)
+        new_example["rejected"] = null_answer  # type: ignore
+        ds["train"] = ds["train"].add_item(example)  # type: ignore
 
-        for example, null_answer in zip(ds["test"], null_answers):
-            new_example = deepcopy(example)
-            new_example["rejected"] = null_answer  # type: ignore
-            ds["test"] = ds["test"].add_item(new_example)  # type: ignore
+    if not args.debug_training:  # type: ignore
+        # If we just add all the null examples to the start of the dataset,
+        # this won't train very much on them since the LR is low
+        for i in range(1_000, len(ds["train"]), len(ds["train"]) // 5):
+            for j, (example, null_answer) in enumerate(
+                zip(ds["train"][i // 2 :]["rejected"], null_answers)  # type: ignore
+            ):
+                new_example = deepcopy(ds["train"][j])
+                new_example["rejected"] = null_answer
+                ds["train"] = ds["train"].add_item(new_example)  # type: ignore
+
+    for example, null_answer in zip(ds["test"], null_answers):
+        new_example = deepcopy(example)
+        new_example["rejected"] = null_answer  # type: ignore
+        ds["test"] = ds["test"].add_item(new_example)  # type: ignore
 
     def process(row):
         return row

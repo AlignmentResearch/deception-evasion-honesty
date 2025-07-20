@@ -299,11 +299,12 @@ def get_activations_and_classify(
     test_df = deepcopy(df[df["split"] == "test"])
     # train_df = train_df.iloc[:200]
 
+    # Remove dataset size limitation - dataset size should be controlled by debug_frac in data munging
     # # DEBUG:
-    if args.debug_training:
-        train_df = train_df.iloc[:2048]
-        train_lr_df = train_lr_df.iloc[:2048]
-        test_df = test_df.iloc[:2048]
+    # if args.debug_training:
+    #     train_df = train_df.iloc[:2048]
+    #     train_lr_df = train_lr_df.iloc[:2048]
+    #     test_df = test_df.iloc[:2048]
     accelerator = None
 
     # Get features from train_lr split to train the logistic regression
@@ -366,7 +367,8 @@ def get_activations_and_classify(
             )
         )
 
-    fraction_for_testing = 0.1 if not args.debug_training else 0.8
+    fraction_for_testing = 0.1  # Remove debug_training effect on testing fraction
+    # fraction_for_testing = 0.1 if not args.debug_training else 0.8
     X_train, X_test, y_train, y_test, scaler = activations_lists_to_train_test(
         train_lr_true_activations,
         train_lr_false_activations,
@@ -604,7 +606,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--debug_training",
         action="store_true",
-        help="Whether to limit the number of examples to speed up training",
+        help="Whether to limit the number of examples to speed up training (kept for compatibility but not used)",
     )
     parser.add_argument(
         "--adaptive",

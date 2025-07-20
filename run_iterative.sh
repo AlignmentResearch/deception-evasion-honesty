@@ -2,11 +2,10 @@
 set -e
 set -o pipefail
 
-# The following 5 hyperparameters are key for experiment configuration:
+# The following 4 hyperparameters are key for experiment configuration:
 #   SEED: Random seed
 #   LIE_TPR: Lie true positive rate
-#   DEBUG_TRAINING: Whether debug training is enabled
-#   SUBSAMPLE_DATASET: Whether dataset is subsampled
+#   SUBSAMPLE_DATASET: Whether dataset is subsampled (for debugging)
 #   NUM_ITERATIONS: Number of iterations
 # You must set these in the environment before running this script.
 
@@ -19,7 +18,7 @@ export PATH="/home/dev/.local/bin:$PATH"
 export MASTER_PORT=$(echo '12'$(shuf -i 100-999 -n 1))
 echo $MASTER_PORT
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-export TAG="${TIMESTAMP}_TPR_${LIE_TPR}_SEED_${SEED}_DEBUG_${DEBUG_TRAINING}_SUBSAMPLE_${SUBSAMPLE_DATASET}_ITER_${NUM_ITERATIONS}"
+export TAG="${TIMESTAMP}_TPR_${LIE_TPR}_SEED_${SEED}_SUBSAMPLE_${SUBSAMPLE_DATASET}_ITER_${NUM_ITERATIONS}"
 
 export EXPERIMENT_SET_DIRECTORY="$P/outputs/$TAG"
 mkdir "$P/outputs" || true
@@ -114,13 +113,6 @@ export DPO_KL_COEF=0.1
 
 # ----------------------------------------
 
-if $DEBUG_TRAINING; then
-    export DEBUG_TRAINING_FLAG="--debug_training"
-    export GRPO_LOGICAL_BATCH_SIZE=64
-else
-    export DEBUG_TRAINING_FLAG=""
-fi
-
 if $ALL_POSITIONS; then
     export ALL_POSITIONS_FLAG='--all_positions'
 else
@@ -176,12 +168,20 @@ else
     echo "Iterative Training Restarted at $(date)" >> "$LOGFILE"
 fi
 
-# Debug mode - just reduce data size to 5%
-if $SUBSAMPLE_DATASET; then
-    echo "Using 5% of data" >> $LOGFILE
+# Debug mode - just reduce data size to 0.01%
+echo "DEBUG: SUBSAMPLE_DATASET value is: '$SUBSAMPLE_DATASET'" >> $LOGFILE
+echo "DEBUG: SUBSAMPLE_DATASET value is: '$SUBSAMPLE_DATASET'"
+
+if [ "$SUBSAMPLE_DATASET" = "true" ] || [ "$SUBSAMPLE_DATASET" = "True" ]; then
+    echo "Using 0.1% of data" >> $LOGFILE
+    echo "DEBUG: Setting DEBUG_FRAC=0.01" >> $LOGFILE
     export DEBUG_FRAC=0.01
+    export DEBUG_FRAC_FLAG="--debug_frac $DEBUG_FRAC"
+    echo "DEBUG: DEBUG_FRAC_FLAG is now: '$DEBUG_FRAC_FLAG'" >> $LOGFILE
 else
+    echo "DEBUG: SUBSAMPLE_DATASET is false, not setting debug flags" >> $LOGFILE
     export DEBUG_FRAC=""
+    export DEBUG_FRAC_FLAG=""
 fi
 
 echo "<env>"
@@ -224,6 +224,11 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
     # Set the base model for this iteration
     export BASE_MODEL_PATH=$BASE_POLICY_PATH
     
+    # Keep track of the original base model for evaluation
+    if [ $iteration -eq 1 ]; then
+        export ORIGINAL_BASE_MODEL_PATH=$BASE_MODEL_PATH
+    fi
+    
     # Set up SFT path for evaluation - always use iteration 1 SFT model
     export EVAL_SFT_PATH="${EXPERIMENT_SET_DIRECTORY}/iteration_1/sft_adapter"
     if $DO_DPO; then
@@ -241,6 +246,8 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
     # MUNGE DATA with iterative splitting
     if ! grep -q "MUNGED DATA at" $ITERATION_LOGFILE; then
         echo "STARTING MUNGE for iteration $iteration at $(date)" >> $ITERATION_LOGFILE
+        echo "DEBUG: About to run munge_data.py with DEBUG_FRAC_FLAG='$DEBUG_FRAC_FLAG'" >> $ITERATION_LOGFILE
+        echo "DEBUG: About to run munge_data.py with DEBUG_FRAC_FLAG='$DEBUG_FRAC_FLAG'"
         python $P/solid_deception/data_generation/munge_data.py \
             --input_path $RAW_DATA_PATH \
             -c $MUNGED_DATA_PATH \
@@ -250,7 +257,7 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
             --iterative \
             --h1_frac $H1_FRAC \
             --iteration $iteration \
-            ${DEBUG_FRAC:+--debug_frac $DEBUG_FRAC} \
+            $DEBUG_FRAC_FLAG \
             2>&1 | tee -a $ITERATION_LOGFILE
         echo "MUNGED DATA for iteration $iteration at $(date)" >> $ITERATION_LOGFILE
     fi
@@ -269,7 +276,6 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
             --lr_save_path $LR_PATH \
             --batch_size $DETECTOR_PDTBS \
             --layer $LAYER \
-            $DEBUG_TRAINING_FLAG \
             --lie_false_positive_rate $LIE_FPR \
             --lie_true_positive_rate $LIE_TPR \
             $SAE_FLAG \
@@ -317,7 +323,6 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
             --dataset_name $DATASET_PATH \
             --bf16 \
             --run_name $SFT_RUN_NAME \
-            $DEBUG_TRAINING_FLAG \
             --gradient_checkpointing True \
             --logical_batch_size $SFT_LOGICAL_BATCH_SIZE \
             --seed $SEED \
@@ -349,7 +354,6 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
                     --lora_r $RM_LORA_R \
                     --use_peft \
                     --num_train_epochs $RM_NUM_EPOCHS \
-                    $DEBUG_TRAINING_FLAG \
                     --logical_batch_size $RM_LOGICAL_BATCH_SIZE \
                     --experiment_set_name $TAG \
                     --seed $SEED \
@@ -373,7 +377,6 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
                     --lora_r $RM_LORA_R \
                     --use_peft \
                     --num_train_epochs $RM_NUM_EPOCHS \
-                    $DEBUG_TRAINING_FLAG \
                     --logical_batch_size $RM_LOGICAL_BATCH_SIZE \
                     --experiment_set_name $TAG \
                     --do_categorical_labels $CATEGORICAL_RM_LABELS \
@@ -418,7 +421,7 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
                 --lora_r $POLICY_LORA_R \
                 --bf16 \
                 --max_grad_norm 1000 \
-                --clip $DEBUG_TRAINING_FLAG \
+                --clip \
                 --logical_batch_size $GRPO_LOGICAL_BATCH_SIZE \
                 --experiment_set_name $TAG \
                 --no_naive_pg_gradient False \
@@ -461,7 +464,6 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
                 --use_peft \
                 --lora_r $POLICY_LORA_R \
                 --logical_batch_size $DPO_LOGICAL_BATCH_SIZE \
-                $DEBUG_TRAINING_FLAG \
                 --experiment_set_name $TAG \
                 --seed $SEED \
                 --kl_beta $GRPO_KL_COEF \
@@ -480,12 +482,11 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
             --reward_model_path "$RM_OUTPUT_DIR" \
             --tokenizer_path $BASE_MODEL_PATH \
             --dataset_path $CSV_PATH \
-            --original_model_path $BASE_MODEL_PATH \
+            --original_model_path $ORIGINAL_BASE_MODEL_PATH \
             --lr_path $LR_PATH \
             --layer $LAYER \
             --output_dir $EVAL_OUT_DIR \
             --n_rows 20 \
-            $DEBUG_TRAINING_FLAG \
             --experiment_set_name $TAG \
             --run_name $EVAL_RUN_NAME \
             --sae_path $SAE_PATH \
@@ -538,7 +539,6 @@ if [ $NUM_ITERATIONS -gt 1 ]; then
         --run_name $MERGE_EVAL_RUN_NAME \
         --seed $SEED \
         --lie_tpr $LIE_TPR \
-        --debug_training $DEBUG_TRAINING \
         --subsample_dataset $SUBSAMPLE_DATASET \
         --num_iterations $NUM_ITERATIONS \
         2>&1 | tee -a $MERGE_EVAL_LOGFILE

@@ -16,7 +16,6 @@ from typing import Dict, List, Any
 
 
 SUBSAMPLE_DATASET = True
-DEBUG_TRAINING = False
 
 def run_experiment(config: Dict[str, Any], config_name: str) -> bool:
     """
@@ -82,7 +81,6 @@ def main():
             "config": {
                 "SEED": 42,
                 "LIE_TPR": 0.8,
-                "DEBUG_TRAINING": DEBUG_TRAINING,
                 "SUBSAMPLE_DATASET": SUBSAMPLE_DATASET,
                 "NUM_ITERATIONS": 1
             }
@@ -92,7 +90,6 @@ def main():
             "config": {
                 "SEED": 42,
                 "LIE_TPR": 0.8,
-                "DEBUG_TRAINING": DEBUG_TRAINING,
                 "SUBSAMPLE_DATASET": SUBSAMPLE_DATASET,
                 "NUM_ITERATIONS": 2
             }
