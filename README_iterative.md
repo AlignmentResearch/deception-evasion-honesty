@@ -1,6 +1,6 @@
 # Iterative SOLiD Training
 
-This directory contains the implementation of iterative SOLiD (Scalable Oversight via Lie Detector) training, which allows you to investigate whether model representations change to make it harder to train lie detection probes across training iterations.
+This directory contains the implementation of iterative SOLiD (Scalable Oversight via Lie Detector) training, which allows you to investigate whether an iterative version of SOLiD lowers the probability of generation of lies.
 
 ## Overview
 
