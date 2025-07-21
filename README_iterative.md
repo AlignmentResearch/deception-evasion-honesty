@@ -11,7 +11,9 @@ The iterative SOLiD procedure implements the following workflow:
 3. **Iteration 2**: Use p1 as the surrogate for the initial policy (instead of the original Llama model)
 4. **Analysis**: Compare lie detector performance and deception rates across iterations
 
-This allows us to answer the question: **Have the representations changed such that it is harder to train a probe to distinguish between truth and false answers?**
+This allows us to answer the questions: 
+1. Can we improve the percentage of lies returned by the final policy with an iterative SOLiD approach?
+1. Are there some lies that are essentially hard to detect?
 
 ## Files
 
@@ -90,19 +92,13 @@ outputs/
 
 ## Key Questions Answered
 
-The analysis will help answer:
+1. Can we improve the percentage of lies returned by the final policy with an iterative SOLiD approach?
+1. Are there some lies that are essentially hard to detect?
 
-1. **Representation Change**: Did the model's internal representations change to make lie detection harder?
-2. **Detection Evasion**: Did the model learn to evade the lie detector while maintaining deception?
-3. **Probe Robustness**: How robust are lie detection probes across different model states?
+## Found Outcomes
 
-## Expected Outcomes
-
-Based on the paper's findings, we might expect:
-
-- **If representations change**: Lie detector AUC decreases while deception rates increase
-- **If no change**: Both metrics remain relatively stable
-- **If detector degradation**: AUC decreases but deception rates don't increase
+1. Policies trained under 2 iterations consistently perform better on "Generated Ground Truth Lie Fraction"
+2. There seem to be lies that are esentially harder to captured by linear probes, indicating that there might be a bound on the potential improvements of this approach.
 
 ## Troubleshooting
 
