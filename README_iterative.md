@@ -58,6 +58,7 @@ export USE_GRPO=false
 # ... etc
 ```
 
+
 ## Directory Structure
 
 After running, you'll have:
@@ -120,6 +121,9 @@ outputs/
 
 - where hyperparams has the following structire {training_step}_{iteri}_{date}_TPR_{TPR}_SEED_ {seed}_SUBSAMPLE_{BOOL}_ITER_{ITER}
 
+### Plots
+
+- They can be generated with `generate_plots_wandb.ipynb`
 
 ## Research Implications
 
