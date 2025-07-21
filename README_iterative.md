@@ -119,8 +119,11 @@ Based on the paper's findings, we might expect:
 
 ### Logs
 
-- Main log: `outputs/YYYYMMDD_HHMMSS/iterative_stdout_err.log`
-- Per-iteration logs: `outputs/YYYYMMDD_HHMMSS/iteration_N/stdout_err.log`
+- Main log: `outputs/YYYYMMDD_HHMMSS_{hyperparams}/iterative_stdout_err.log`
+- Per-iteration logs: `outputs/YYYYMMDD_HHMMSS_{hyperparams}/iteration_N/stdout_err.log`
+
+- where hyperparams has the following structire {training_step}_{iteri}_{date}_TPR_{TPR}_SEED_ {seed}_SUBSAMPLE_{BOOL}_ITER_{ITER}
+
 
 ## Research Implications
 
