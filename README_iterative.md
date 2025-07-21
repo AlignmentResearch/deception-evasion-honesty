@@ -56,23 +56,6 @@ export USE_GRPO=false
 # ... etc
 ```
 
-### Analyzing Results
-
-After training completes, analyze the results:
-
-```bash
-# Analyze results from a specific experiment
-python analyze_iterations.py \
-    --experiment_dir outputs/YYYYMMDD_HHMMSS \
-    --output_dir analysis_output
-```
-
-This will generate:
-- `lie_detector_performance.csv`: Performance metrics across iterations
-- `deception_rates.csv`: Deception rates across iterations
-- `iteration_comparison.png`: Visualization plots
-- `analysis_report.txt`: Summary report with key findings
-
 ## Directory Structure
 
 After running, you'll have:
