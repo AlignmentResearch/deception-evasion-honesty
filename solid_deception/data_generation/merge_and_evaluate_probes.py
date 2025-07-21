@@ -134,7 +134,7 @@ def evaluate_probe(true_activations: torch.Tensor, false_activations: torch.Tens
 
 def calculate_confusion_matrix(true_activations: torch.Tensor, false_activations: torch.Tensor,
                              scaler1: StandardScaler, lr1: LogisticRegression, db1: float,
-                             scaler2: StandardScaler, lr2: LogisticRegression, db2: float) -> np.ndarray:
+                             scaler2: StandardScaler, lr2: LogisticRegression, db2: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Calculate 2x2 confusion matrix showing overlap between probe detections."""
     logger.info("Calculating confusion matrix...")
     
@@ -159,7 +159,7 @@ def calculate_confusion_matrix(true_activations: torch.Tensor, false_activations
     # Both undetected
     confusion_matrix[1, 1] = np.sum(~probe1_predictions & ~probe2_predictions)
     
-    return confusion_matrix
+    return confusion_matrix, probe1_predictions, probe2_predictions
 
 def plot_confusion_matrix(confusion_matrix: np.ndarray, results: list, output_path: str):
     """Create and save a plot of the confusion matrix."""
@@ -353,7 +353,7 @@ def main():
         results.append(evaluate_probe(true_activations, false_activations, scaler2, lr2, db2, "Iteration 2 Probe"))
         
         # Step 7: Calculate confusion matrix
-        confusion_matrix = calculate_confusion_matrix(
+        confusion_matrix, probe1_predictions, probe2_predictions = calculate_confusion_matrix(
             true_activations, false_activations, scaler1, lr1, db1, scaler2, lr2, db2
         )
         
@@ -392,6 +392,29 @@ def main():
         results_df = pd.DataFrame(results)
         results_df.to_csv(args.results_csv, index=False)
         logger.info(f"Evaluation results saved to {args.results_csv}")
+        
+        # Step 9: Save dataset with probe detection results
+        logger.info("Saving dataset with probe detection results...")
+        
+        # Create a copy of the test dataframe
+        test_df_with_predictions = test_df.copy()
+        
+        # Add probe detection columns (only for deceptive responses)
+        test_df_with_predictions['probe1_detected'] = probe1_predictions
+        test_df_with_predictions['probe2_detected'] = probe2_predictions
+        
+        # Add probe prediction scores
+        scaled_features = scaler1.transform(false_activations.numpy())
+        probe1_scores = lr1.predict_proba(scaled_features)[:, 1]
+        probe2_scores = lr2.predict_proba(scaled_features)[:, 1]
+        
+        test_df_with_predictions['probe1_score'] = probe1_scores
+        test_df_with_predictions['probe2_score'] = probe2_scores
+        
+        # Save the enhanced dataset
+        enhanced_output_path = args.output_csv.replace('.csv', '_with_predictions.csv')
+        test_df_with_predictions.to_csv(enhanced_output_path, index=False)
+        logger.info(f"Dataset with probe predictions saved to {enhanced_output_path}")
         
         # Log to wandb
         log_to_wandb(results, confusion_matrix, args.output_csv, args.run_name,
