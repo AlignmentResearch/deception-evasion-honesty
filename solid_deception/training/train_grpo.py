@@ -384,28 +384,29 @@ if __name__ == "__main__":
     # see: https://github.com/huggingface/trl/pull/1255
     # with PartialState().local_main_process_first():
 
-    if training_args.debug_training:  # type: ignore
-        ds = DatasetDict(
-            {
-                "train": ds["train"].select(  # type: ignore
-                    range(training_args.logical_batch_size // 2)
-                ),
-                "test": ds["test"].select(  # type: ignore
-                    range(training_args.logical_batch_size // 2)
-                ),
-            }
-        )
-        training_args.total_episodes = 64
-    else:
-        # Can't figure out how to stop the eval taking ages,
-        # so we use this workaround
-        test_len = min(len(ds["test"]), 2048)
-        ds = DatasetDict(
-            {
-                "train": ds["train"],
-                "test": ds["test"].select(range(test_len)),  # type: ignore
-            }
-        )
+    # Remove dataset size limitation and training parameter changes - dataset size should be controlled by debug_frac in data munging
+    # if training_args.debug_training:  # type: ignore
+    #     ds = DatasetDict(
+    #         {
+    #             "train": ds["train"].select(  # type: ignore
+    #                 range(training_args.logical_batch_size // 2)
+    #             ),
+    #             "test": ds["test"].select(  # type: ignore
+    #                 range(training_args.logical_batch_size // 2)
+    #             ),
+    #         }
+    #     )
+    #     training_args.total_episodes = 64
+    # else:
+    # Can't figure out how to stop the eval taking ages,
+    # so we use this workaround
+    test_len = min(len(ds["test"]), 2048)
+    ds = DatasetDict(
+        {
+            "train": ds["train"],
+            "test": ds["test"].select(range(test_len)),  # type: ignore
+        }
+    )
     ds = prepare_dataset(ds, tokenizer)
 
     ds_length = len(ds["train"]) + len(ds["test"])

@@ -37,7 +37,7 @@ WANDB_PROJECT = os.environ.get("WANDB_PROJECT", "")
 
 @dataclass
 class MyRewardScriptArguments(RewardScriptArguments):
-    debug_training: bool = False
+    debug_training: bool = False  # Keep for compatibility but not used
     null_answer_path: str = "/workspace/data/null_answers.txt"
     logical_batch_size: Optional[int] = None
 
@@ -145,7 +145,14 @@ if __name__ == "__main__":
     model = AutoModelForSequenceClassification.from_pretrained(
         model_config.model_name_or_path, **model_kwargs
     )
-    tokenizer = AutoTokenizer.from_pretrained(model_config.model_name_or_path)
+    
+    # Load tokenizer from the base model path if using adapter
+    if os.path.exists(os.path.join(model_config.model_name_or_path, "adapter_config.json")):
+        # Use base model tokenizer for adapters
+        tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B-Instruct")
+    else:
+        # Use the provided model path
+        tokenizer = AutoTokenizer.from_pretrained(model_config.model_name_or_path)
 
     if model_config.use_peft:
         peft_config = LoraConfig(
@@ -157,7 +164,14 @@ if __name__ == "__main__":
             task_type="SEQ_CLS",
             modules_to_save=["score"],
         )
-        model.add_adapter(peft_config)
+        
+        # Check if model already has adapters (from previous iteration)
+        if hasattr(model, 'peft_config') and model.peft_config:
+            print("Model already has adapters, continuing training with existing adapter")
+            peft_config = None  # Don't add new adapter
+        else:
+            print("Adding new LoRA adapter")
+            model.add_adapter(peft_config)
     else:
         peft_config = None
 
@@ -217,36 +231,37 @@ if __name__ == "__main__":
         # This assumes the chosen/rejected columns are in the OpenAI messages format.
         # chosen_fn = conversations_formatting_function(tokenizer, "chosen")
         # rejected_fn = conversations_formatting_function(tokenizer, "rejected")
-        if args.debug_training:
-            ds = DatasetDict(
-                {
-                    "train": ds["train"].select(range(100)),  # type: ignore
-                    "test": ds["test"].select(range(100)),  # type: ignore
-                }
-            )
-        else:
-            null_answers = open(args.null_answer_path, "r").readlines()  # type: ignore
-            null_answers = [a[:-1] if a[-1] == "\n" else a for a in null_answers]
-            for example, null_answer in zip(ds["train"], null_answers):
-                new_example = deepcopy(example)
-                new_example["rejected"] = null_answer  # type: ignore
-                ds["train"] = ds["train"].add_item(example)  # type: ignore
+        # Remove dataset size limitation - dataset size should be controlled by debug_frac in data munging
+        # if args.debug_training:
+        #     ds = DatasetDict(
+        #         {
+        #             "train": ds["train"].select(range(100)),  # type: ignore
+        #             "test": ds["test"].select(range(100)),  # type: ignore
+        #         }
+        #     )
+        # else:
+        null_answers = open(args.null_answer_path, "r").readlines()  # type: ignore
+        null_answers = [a[:-1] if a[-1] == "\n" else a for a in null_answers]
+        for example, null_answer in zip(ds["train"], null_answers):
+            new_example = deepcopy(example)
+            new_example["rejected"] = null_answer  # type: ignore
+            ds["train"] = ds["train"].add_item(example)  # type: ignore
 
-            if not args.debug_training:  # type: ignore
-                # If we just add all the null examples to the start of the dataset,
-                # this won't train very much on them since the LR is low
-                for i in range(1_000, len(ds["train"]), len(ds["train"]) // 5):
-                    for j, (example, null_answer) in enumerate(
-                        zip(ds["train"][i // 2 :]["rejected"], null_answers)  # type: ignore
-                    ):
-                        new_example = deepcopy(ds["train"][j])
-                        new_example["rejected"] = null_answer
-                        ds["train"] = ds["train"].add_item(new_example)  # type: ignore
+        if not args.debug_training:  # type: ignore
+            # If we just add all the null examples to the start of the dataset,
+            # this won't train very much on them since the LR is low
+            for i in range(1_000, len(ds["train"]), len(ds["train"]) // 5):
+                for j, (example, null_answer) in enumerate(
+                    zip(ds["train"][i // 2 :]["rejected"], null_answers)  # type: ignore
+                ):
+                    new_example = deepcopy(ds["train"][j])
+                    new_example["rejected"] = null_answer
+                    ds["train"] = ds["train"].add_item(new_example)  # type: ignore
 
-            for example, null_answer in zip(ds["test"], null_answers):
-                new_example = deepcopy(example)
-                new_example["rejected"] = null_answer  # type: ignore
-                ds["test"] = ds["test"].add_item(new_example)  # type: ignore
+        for example, null_answer in zip(ds["test"], null_answers):
+            new_example = deepcopy(example)
+            new_example["rejected"] = null_answer  # type: ignore
+            ds["test"] = ds["test"].add_item(new_example)  # type: ignore
 
         ds = ds.map(
             lambda x: {

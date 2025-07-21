@@ -46,7 +46,7 @@ WANDB_PROJECT = os.environ.get("WANDB_PROJECT", "")
 
 @dataclass
 class MySFTScriptArguments(SFTScriptArguments):
-    debug_training: bool = False
+    debug_training: bool = False  # Keep for compatibility but not used
     experiment_set_name: Optional[str] = None
     logical_batch_size: Optional[int] = None
     experiment_type: str = "SFT"
@@ -180,10 +180,24 @@ if __name__ == "__main__":
             use_rslora=False,
             # init_lora_weights="pissa",
         )
-        model.add_adapter(peft_config)
+        
+        # Check if model already has adapters (from previous iteration)
+        if hasattr(model, 'peft_config') and model.peft_config:
+            print("Model already has adapters, continuing training with existing adapter")
+            peft_config = None  # Don't add new adapter
+        else:
+            print("Adding new LoRA adapter")
+            model.add_adapter(peft_config)
     else:
         peft_config = None
-    tokenizer = AutoTokenizer.from_pretrained(model_config.model_name_or_path)
+    
+    # Load tokenizer from the base model path if using adapter
+    if os.path.exists(os.path.join(model_config.model_name_or_path, "adapter_config.json")):
+        # Use base model tokenizer for adapters
+        tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B-Instruct")
+    else:
+        # Use the provided model path
+        tokenizer = AutoTokenizer.from_pretrained(model_config.model_name_or_path)
     if tokenizer.pad_token is None or tokenizer.pad_token_id == tokenizer.eos_token_id:
         # tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer("<|end_of_text|>")["input_ids"][1]
@@ -202,14 +216,6 @@ if __name__ == "__main__":
         return output_texts
 
     ds = load_from_disk(args.dataset_name, keep_in_memory=False)  # type: ignore
-    if args.debug_training:  # type: ignore
-        if len(ds["train"]) > 2048:
-            ds = DatasetDict(
-                {
-                    "train": ds["train"].select(range(2048)),  # type: ignore
-                    "test": ds["test"].select(range(2048)),  # type: ignore
-                }
-            )
 
     def process(row):
         return row

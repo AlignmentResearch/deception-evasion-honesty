@@ -29,6 +29,7 @@ from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader  # type: ignore
 from transformers import BitsAndBytesConfig
 from trl import get_kbit_device_map
+from peft import AutoPeftModelForCausalLM
 
 from solid_deception.detection.loaders import PromptDataset, collate_fn
 from solid_deception.detection.residual import get_model_activations_parallel
@@ -183,6 +184,52 @@ def summarize_logistic_regression(model, X_test, y_test):
     return summary
 
 
+def load_model_for_detection(args):
+    """Load model with proper LoRA adapter handling."""
+    
+    # Check if we're using a LoRA adapter
+    is_adapter = os.path.exists(os.path.join(args.model_path, "adapter_config.json"))
+    
+    if is_adapter:
+        # Load base model first
+        base_model_path = "meta-llama/Llama-3.2-1B-Instruct"  # Original base model
+        model = transformers.AutoModelForCausalLM.from_pretrained(
+            base_model_path,
+            torch_dtype=torch.bfloat16,
+            trust_remote_code=True,
+            use_cache=False,
+        )
+        
+        # Move to GPU for Flash Attention
+        if torch.cuda.is_available():
+            model = model.to("cuda")
+            model.config.attn_implementation = "flash_attention_2"
+        
+        # Load and apply adapter
+        model_with_adapter = AutoPeftModelForCausalLM.from_pretrained(
+            args.model_path,  # This is the adapter path
+            torch_dtype=torch.bfloat16,
+            use_cache=False,
+        )
+        
+        # Merge adapter with base model
+        model = model_with_adapter.merge_and_unload()
+        print(f"✓ Loaded base model and applied adapter from {args.model_path}")
+        
+    else:
+        # Load regular model
+        model = transformers.AutoModelForCausalLM.from_pretrained(
+            args.model_path,
+            torch_dtype=torch.bfloat16,
+            trust_remote_code=True,
+            use_cache=False,
+            attn_implementation="flash_attention_2",
+        )
+        print(f"✓ Loaded model from {args.model_path}")
+    
+    return model
+
+
 def get_activations_and_classify(
     args,
 ):
@@ -235,13 +282,16 @@ def get_activations_and_classify(
             }
         )
 
-    model = transformers.AutoModelForCausalLM.from_pretrained(
-        args.model_path, torch_dtype=torch.bfloat16, **model_kwargs
-    )
-    # if not quantize:
-    #     model = model.to(device)
-
-    tokenizer = transformers.AutoTokenizer.from_pretrained(args.tokenizer_path)
+    # Load model with proper LoRA adapter handling
+    model = load_model_for_detection(args)
+    
+    # Load tokenizer from the base model path if using adapter
+    if os.path.exists(os.path.join(args.model_path, "adapter_config.json")):
+        # Use base model tokenizer for adapters
+        tokenizer = transformers.AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B-Instruct")
+    else:
+        # Use the provided tokenizer path
+        tokenizer = transformers.AutoTokenizer.from_pretrained(args.tokenizer_path)
 
     df = pd.read_csv(args.data_path)
     train_df = deepcopy(df[df["split"] == "train"])
@@ -249,11 +299,12 @@ def get_activations_and_classify(
     test_df = deepcopy(df[df["split"] == "test"])
     # train_df = train_df.iloc[:200]
 
+    # Remove dataset size limitation - dataset size should be controlled by debug_frac in data munging
     # # DEBUG:
-    if args.debug_training:
-        train_df = train_df.iloc[:2048]
-        train_lr_df = train_lr_df.iloc[:2048]
-        test_df = test_df.iloc[:2048]
+    # if args.debug_training:
+    #     train_df = train_df.iloc[:2048]
+    #     train_lr_df = train_lr_df.iloc[:2048]
+    #     test_df = test_df.iloc[:2048]
     accelerator = None
 
     # Get features from train_lr split to train the logistic regression
@@ -316,7 +367,8 @@ def get_activations_and_classify(
             )
         )
 
-    fraction_for_testing = 0.1 if not args.debug_training else 0.8
+    fraction_for_testing = 0.1  # Remove debug_training effect on testing fraction
+    # fraction_for_testing = 0.1 if not args.debug_training else 0.8
     X_train, X_test, y_train, y_test, scaler = activations_lists_to_train_test(
         train_lr_true_activations,
         train_lr_false_activations,
@@ -554,7 +606,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--debug_training",
         action="store_true",
-        help="Whether to limit the number of examples to speed up training",
+        help="Whether to limit the number of examples to speed up training (kept for compatibility but not used)",
     )
     parser.add_argument(
         "--adaptive",

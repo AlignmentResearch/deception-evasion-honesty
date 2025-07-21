@@ -39,7 +39,7 @@ from solid_deception.training.reward_functions import (  # type: ignore
 )
 from solid_deception.utils.training import UpdateConfigCallback  # type: ignore
 
-torch.serialization.add_safe_globals([torch.nn.modules.linear.Linear])  # type: ignore
+# torch.serialization.add_safe_globals([torch.nn.modules.linear.Linear])  # type: ignore
 
 WANDB_PROJECT = os.environ.get("WANDB_PROJECT", "")
 
@@ -87,7 +87,13 @@ def load_models_and_tokenizer(
     REWARD_TO_CATEGORY = {null_example_reward: 0, 1.0: 1, 2.0: 2, -1.0: 3}  # type: ignore
     CATEGORY_TO_REWARD = {v: k for k, v in REWARD_TO_CATEGORY.items()}
 
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+    # Load tokenizer from the base model path if using adapter
+    if os.path.exists(os.path.join(tokenizer_path, "adapter_config.json")):
+        # Use base model tokenizer for adapters
+        tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B-Instruct")
+    else:
+        # Use the provided tokenizer path
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
     if tokenizer.pad_token is None:
         if policy_path and "llama" in policy_path:  # type: ignore
             tokenizer.pad_token_id = tokenizer("<|end_of_text|>")["input_ids"][1]
@@ -815,11 +821,12 @@ def main(args):
     print(f"Found {len(df)} entries")
     if args.n_rows is not None:
         print(f"Subsampling to {args.n_rows} entries")
-        df_sample = df.sample(n=args.n_rows, random_state=42)
+        df_sample = df.sample(n=args.n_rows, random_state=42, replace=True)
     else:
         df_sample = df
-    if args.debug_training:
-        df_sample = df.sample(n=3, random_state=42)
+    # Remove debug_training effect on evaluation samples - dataset size should be controlled by debug_frac in data munging
+    # if args.debug_training:
+    #     df_sample = df.sample(n=3, random_state=42)
     df_sample = cast(pd.DataFrame, df_sample)
     # Generate responses for the sampled data
     if policy is not None:
@@ -1089,7 +1096,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--system_prompt_path",
         type=str,
-        default="/workspace/solid_deception/training/gpt4_reward_prompt.txt",
+        default="solid_deception/training/gpt4_reward_prompt.txt",
         help="Path to system prompt",
     )
     parser.add_argument(
