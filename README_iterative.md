@@ -1,6 +1,6 @@
 # Iterative SOLiD Training
 
-This directory contains the implementation of iterative SOLiD (Scalable Oversight via Lie Detector) training, which allows you to investigate whether model representations change to make it harder to train lie detection probes across training iterations.
+This directory contains the implementation of iterative SOLiD (Scalable Oversight via Lie Detector) training, which allows you to investigate whether an iterative version of SOLiD lowers the probability of generation of lies.
 
 ## Overview
 
@@ -11,7 +11,9 @@ The iterative SOLiD procedure implements the following workflow:
 3. **Iteration 2**: Use p1 as the surrogate for the initial policy (instead of the original Llama model)
 4. **Analysis**: Compare lie detector performance and deception rates across iterations
 
-This allows us to answer the question: **Have the representations changed such that it is harder to train a probe to distinguish between truth and false answers?**
+This allows us to answer the questions: 
+1. Can we improve the percentage of lies returned by the final policy with an iterative SOLiD approach?
+1. Are there some lies that are essentially hard to detect?
 
 ## Files
 
@@ -56,22 +58,6 @@ export USE_GRPO=false
 # ... etc
 ```
 
-### Analyzing Results
-
-After training completes, analyze the results:
-
-```bash
-# Analyze results from a specific experiment
-python analyze_iterations.py \
-    --experiment_dir outputs/YYYYMMDD_HHMMSS \
-    --output_dir analysis_output
-```
-
-This will generate:
-- `lie_detector_performance.csv`: Performance metrics across iterations
-- `deception_rates.csv`: Deception rates across iterations
-- `iteration_comparison.png`: Visualization plots
-- `analysis_report.txt`: Summary report with key findings
 
 ## Directory Structure
 
@@ -107,19 +93,13 @@ outputs/
 
 ## Key Questions Answered
 
-The analysis will help answer:
+1. Can we improve the percentage of lies returned by the final policy with an iterative SOLiD approach?
+1. Are there some lies that are essentially hard to detect?
 
-1. **Representation Change**: Did the model's internal representations change to make lie detection harder?
-2. **Detection Evasion**: Did the model learn to evade the lie detector while maintaining deception?
-3. **Probe Robustness**: How robust are lie detection probes across different model states?
+## Found Outcomes
 
-## Expected Outcomes
-
-Based on the paper's findings, we might expect:
-
-- **If representations change**: Lie detector AUC decreases while deception rates increase
-- **If no change**: Both metrics remain relatively stable
-- **If detector degradation**: AUC decreases but deception rates don't increase
+1. Policies trained under 2 iterations consistently perform better on "Generated Ground Truth Lie Fraction"
+2. There seem to be lies that are esentially harder to captured by linear probes, indicating that there might be a bound on the potential improvements of this approach.
 
 ## Troubleshooting
 
@@ -136,8 +116,14 @@ Based on the paper's findings, we might expect:
 
 ### Logs
 
-- Main log: `outputs/YYYYMMDD_HHMMSS/iterative_stdout_err.log`
-- Per-iteration logs: `outputs/YYYYMMDD_HHMMSS/iteration_N/stdout_err.log`
+- Main log: `outputs/YYYYMMDD_HHMMSS_{hyperparams}/iterative_stdout_err.log`
+- Per-iteration logs: `outputs/YYYYMMDD_HHMMSS_{hyperparams}/iteration_N/stdout_err.log`
+
+- where hyperparams has the following structire {training_step}_{iteri}_{date}_TPR_{TPR}_SEED_ {seed}_SUBSAMPLE_{BOOL}_ITER_{ITER}
+
+### Plots
+
+- They can be generated with `generate_plots_wandb.ipynb`
 
 ## Research Implications
 

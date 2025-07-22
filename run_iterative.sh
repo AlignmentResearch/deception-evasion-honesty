@@ -2,6 +2,13 @@
 set -e
 set -o pipefail
 
+# The following 4 hyperparameters are key for experiment configuration:
+#   SEED: Random seed
+#   LIE_TPR: Lie true positive rate
+#   SUBSAMPLE_DATASET: Whether dataset is subsampled (for debugging)
+#   NUM_ITERATIONS: Number of iterations
+# You must set these in the environment before running this script.
+
 source ./configs/setup.sh
 
 cd /workspace/deception-evasion-honesty
@@ -11,33 +18,37 @@ export PATH="/home/dev/.local/bin:$PATH"
 export MASTER_PORT=$(echo '12'$(shuf -i 100-999 -n 1))
 echo $MASTER_PORT
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-export TAG="$TIMESTAMP"
+export TAG="${TIMESTAMP}_TPR_${LIE_TPR}_SEED_${SEED}_SUBSAMPLE_${SUBSAMPLE_DATASET}_ITER_${NUM_ITERATIONS}"
 
 export EXPERIMENT_SET_DIRECTORY="$P/outputs/$TAG"
 mkdir "$P/outputs" || true
 mkdir $EXPERIMENT_SET_DIRECTORY || true
 
 # Iterative training parameters
-export NUM_ITERATIONS=2
-export H1_FRAC=0.5
+if [ "$NUM_ITERATIONS" -eq 2 ]; then
+    export H1_FRAC=0.5
+elif [ "$NUM_ITERATIONS" -eq 1 ]; then
+    export H1_FRAC=1.0
+else
+    echo "ERROR: NUM_ITERATIONS must be 1 or 2 for H1_FRAC logic." >&2
+    exit 1
+fi
 export BASE_POLICY_PATH="meta-llama/Llama-3.2-1B-Instruct"  # Start with original model
 
 # Debug mode - set to true to use only 5% of data for fast iteration
-export SUBSAMPLE_DATASET=false
 
 # Setting up file locations (organizational)
 export LOGFILE="$EXPERIMENT_SET_DIRECTORY/iterative_stdout_err.log"
 export WANDB_PROJECT='solid_deception_iterative'
 
 # Global Settings
-export DEBUG_TRAINING=false
 export DO_SAE=false
 export DO_DPO=true
 export DO_BT_RM=true # Bradley-Terry reward model
 export DO_CATEGORICAL_RM=false
 export ADAPTIVE=false
 export RESTART_GRPO=false
-export BASE_PDTBS=64 # Per device batch size for 8b
+export BASE_PDTBS=32 # Per device batch size for 8b
 
 # Model
 export GENERATION_LORA_PATH=None
@@ -54,14 +65,12 @@ export REWARD_SYSTEM_PROMPT="$P/solid_deception/training/gpt4_reward_prompt.txt"
 export LAYER=16
 export TRAIN_DATA_LIMIT=None
 export LIE_FPR=None
-export LIE_TPR=0.9 
 export SAE_PATH="$P/saes/layer_23"
 export SAE_DESCRIPTIONS_PATH="$P/solid_deception/detection/model.layers.23_feature.json"
 export SAE_WORDS_PATH="$P/solid_deception/detection/sae_words.txt"
 export NULL_ANSWER_PATH="$P/data/null_answers.txt"
 export ALL_POSITIONS=false
 export SAMPLE_LABELS=false
-export SEED=0
 export DETECTOR_PDTBS=$((BASE_PDTBS / 2))
 
 # RM
@@ -73,7 +82,7 @@ export RM_PDTBS=$((BASE_PDTBS * 2))
 
 # SFT
 export SFT_LOGICAL_BATCH_SIZE=128
-export SFT_PDTBS=$((BASE_PDTBS))
+export SFT_PDTBS=$((BASE_PDTBS / 2))
 export SFT_LR=1e-5
 
 # GRPO
@@ -103,13 +112,6 @@ export DPO_KL_COEF=0.1
 
 
 # ----------------------------------------
-
-if $DEBUG_TRAINING; then
-    export DEBUG_TRAINING_FLAG="--debug_training"
-    export GRPO_LOGICAL_BATCH_SIZE=64
-else
-    export DEBUG_TRAINING_FLAG=""
-fi
 
 if $ALL_POSITIONS; then
     export ALL_POSITIONS_FLAG='--all_positions'
@@ -166,12 +168,20 @@ else
     echo "Iterative Training Restarted at $(date)" >> "$LOGFILE"
 fi
 
-# Debug mode - just reduce data size to 5%
-if $SUBSAMPLE_DATASET; then
-    echo "DEBUG MODE ENABLED - Using 5% of data" >> $LOGFILE
-    export DEBUG_FRAC=0.05
+# Debug mode - just reduce data size to 0.01%
+echo "DEBUG: SUBSAMPLE_DATASET value is: '$SUBSAMPLE_DATASET'" >> $LOGFILE
+echo "DEBUG: SUBSAMPLE_DATASET value is: '$SUBSAMPLE_DATASET'"
+
+if [ "$SUBSAMPLE_DATASET" = "true" ] || [ "$SUBSAMPLE_DATASET" = "True" ]; then
+    echo "Using 0.1% of data" >> $LOGFILE
+    echo "DEBUG: Setting DEBUG_FRAC=0.01" >> $LOGFILE
+    export DEBUG_FRAC=0.01
+    export DEBUG_FRAC_FLAG="--debug_frac $DEBUG_FRAC"
+    echo "DEBUG: DEBUG_FRAC_FLAG is now: '$DEBUG_FRAC_FLAG'" >> $LOGFILE
 else
+    echo "DEBUG: SUBSAMPLE_DATASET is false, not setting debug flags" >> $LOGFILE
     export DEBUG_FRAC=""
+    export DEBUG_FRAC_FLAG=""
 fi
 
 echo "<env>"
@@ -214,8 +224,13 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
     # Set the base model for this iteration
     export BASE_MODEL_PATH=$BASE_POLICY_PATH
     
-    # Set up SFT path for evaluation
-    export EVAL_SFT_PATH="${SFT_DIR}_adapter"
+    # Keep track of the original base model for evaluation
+    if [ $iteration -eq 1 ]; then
+        export ORIGINAL_BASE_MODEL_PATH=$BASE_MODEL_PATH
+    fi
+    
+    # Set up SFT path for evaluation - always use iteration 1 SFT model
+    export EVAL_SFT_PATH="${EXPERIMENT_SET_DIRECTORY}/iteration_1/sft_adapter"
     if $DO_DPO; then
         export RM_OUTPUT_DIR="None"
     else
@@ -231,6 +246,8 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
     # MUNGE DATA with iterative splitting
     if ! grep -q "MUNGED DATA at" $ITERATION_LOGFILE; then
         echo "STARTING MUNGE for iteration $iteration at $(date)" >> $ITERATION_LOGFILE
+        echo "DEBUG: About to run munge_data.py with DEBUG_FRAC_FLAG='$DEBUG_FRAC_FLAG'" >> $ITERATION_LOGFILE
+        echo "DEBUG: About to run munge_data.py with DEBUG_FRAC_FLAG='$DEBUG_FRAC_FLAG'"
         python $P/solid_deception/data_generation/munge_data.py \
             --input_path $RAW_DATA_PATH \
             -c $MUNGED_DATA_PATH \
@@ -240,7 +257,7 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
             --iterative \
             --h1_frac $H1_FRAC \
             --iteration $iteration \
-            ${DEBUG_FRAC:+--debug_frac $DEBUG_FRAC} \
+            $DEBUG_FRAC_FLAG \
             2>&1 | tee -a $ITERATION_LOGFILE
         echo "MUNGED DATA for iteration $iteration at $(date)" >> $ITERATION_LOGFILE
     fi
@@ -259,7 +276,6 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
             --lr_save_path $LR_PATH \
             --batch_size $DETECTOR_PDTBS \
             --layer $LAYER \
-            $DEBUG_TRAINING_FLAG \
             --lie_false_positive_rate $LIE_FPR \
             --lie_true_positive_rate $LIE_TPR \
             $SAE_FLAG \
@@ -289,8 +305,8 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
         echo "MADE DATASET for iteration $iteration at $(date)" >> $ITERATION_LOGFILE
     fi
     
-    # TRAIN SFT
-    if ! grep -q "TRAINED SFT at" $ITERATION_LOGFILE; then
+    # TRAIN SFT (only on first iteration)
+    if [ $iteration -eq 1 ] && ! grep -q "TRAINED SFT at" $ITERATION_LOGFILE; then
         echo "STARTING SFT for iteration $iteration at $(date)" >> $ITERATION_LOGFILE
         accelerate launch \
             --config_file $ACONFIG \
@@ -307,13 +323,14 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
             --dataset_name $DATASET_PATH \
             --bf16 \
             --run_name $SFT_RUN_NAME \
-            $DEBUG_TRAINING_FLAG \
             --gradient_checkpointing True \
             --logical_batch_size $SFT_LOGICAL_BATCH_SIZE \
             --seed $SEED \
             --experiment_set_name $TAG \
             2>&1 | tee -a $ITERATION_LOGFILE
         echo "TRAINED SFT for iteration $iteration at $(date)" >> $ITERATION_LOGFILE
+    elif [ $iteration -gt 1 ]; then
+        echo "SKIPPING SFT for iteration $iteration (SFT only done on first iteration)" >> $ITERATION_LOGFILE
     fi
     
     # TRAIN RM (if not DPO)
@@ -337,7 +354,6 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
                     --lora_r $RM_LORA_R \
                     --use_peft \
                     --num_train_epochs $RM_NUM_EPOCHS \
-                    $DEBUG_TRAINING_FLAG \
                     --logical_batch_size $RM_LOGICAL_BATCH_SIZE \
                     --experiment_set_name $TAG \
                     --seed $SEED \
@@ -361,7 +377,6 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
                     --lora_r $RM_LORA_R \
                     --use_peft \
                     --num_train_epochs $RM_NUM_EPOCHS \
-                    $DEBUG_TRAINING_FLAG \
                     --logical_batch_size $RM_LOGICAL_BATCH_SIZE \
                     --experiment_set_name $TAG \
                     --do_categorical_labels $CATEGORICAL_RM_LABELS \
@@ -406,7 +421,7 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
                 --lora_r $POLICY_LORA_R \
                 --bf16 \
                 --max_grad_norm 1000 \
-                --clip $DEBUG_TRAINING_FLAG \
+                --clip \
                 --logical_batch_size $GRPO_LOGICAL_BATCH_SIZE \
                 --experiment_set_name $TAG \
                 --no_naive_pg_gradient False \
@@ -421,13 +436,23 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
         # TRAIN DPO
         if ! grep -q "TRAINED DPO at" $ITERATION_LOGFILE; then
             echo "STARTING DPO for iteration $iteration at $(date)" >> $ITERATION_LOGFILE
+            
+            # For iteration 1, use SFT model; for later iterations, use policy from previous iteration
+            if [ $iteration -eq 1 ]; then
+                PRE_DPO_MODEL_PATH="${SFT_DIR}_adapter"
+                echo "DPO loading SFT model: $PRE_DPO_MODEL_PATH" >> $ITERATION_LOGFILE
+            else
+                PRE_DPO_MODEL_PATH="${EXPERIMENT_SET_DIRECTORY}/iteration_$((iteration-1))/policy_adapter"
+                echo "DPO loading policy model from previous iteration: $PRE_DPO_MODEL_PATH" >> $ITERATION_LOGFILE
+            fi
+            
             accelerate launch \
                 --config_file $ACONFIG \
                 --main_process_port $MASTER_PORT \
                 $P/solid_deception/training/train_dpo.py \
                 --dataset_name $DATASET_PATH \
                 --output_dir $POLICY_DIR \
-                --model_name_or_path "${SFT_DIR}_adapter" \
+                --model_name_or_path "$PRE_DPO_MODEL_PATH" \
                 --per_device_train_batch_size $DPO_PDTBS \
                 --eval_steps 400 \
                 --label_smoothing_factor 0.05 \
@@ -439,7 +464,6 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
                 --use_peft \
                 --lora_r $POLICY_LORA_R \
                 --logical_batch_size $DPO_LOGICAL_BATCH_SIZE \
-                $DEBUG_TRAINING_FLAG \
                 --experiment_set_name $TAG \
                 --seed $SEED \
                 --kl_beta $GRPO_KL_COEF \
@@ -458,12 +482,11 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
             --reward_model_path "$RM_OUTPUT_DIR" \
             --tokenizer_path $BASE_MODEL_PATH \
             --dataset_path $CSV_PATH \
-            --original_model_path $BASE_MODEL_PATH \
+            --original_model_path $ORIGINAL_BASE_MODEL_PATH \
             --lr_path $LR_PATH \
             --layer $LAYER \
             --output_dir $EVAL_OUT_DIR \
-            --n_rows 20 \
-            $DEBUG_TRAINING_FLAG \
+            --n_rows 100 \
             --experiment_set_name $TAG \
             --run_name $EVAL_RUN_NAME \
             --sae_path $SAE_PATH \
@@ -487,6 +510,44 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
     
     echo "=== Completed Iteration $iteration ===" >> $LOGFILE
 done
+
+# MERGE AND EVALUATE PROBES (only if more than 1 iteration)
+if [ $NUM_ITERATIONS -gt 1 ]; then
+    echo "=== Starting Merge and Evaluate Probes ===" >> $LOGFILE
+    echo "STARTING MERGE AND EVALUATE at $(date)" >> $LOGFILE
+    
+    # Set up merge and evaluate specific variables
+    export MERGE_EVAL_LOGFILE="$EXPERIMENT_SET_DIRECTORY/merge_eval_stdout_err.log"
+    export MERGE_EVAL_RUN_NAME="merge_and_evaluate_probes_$TAG"
+    
+    if [ ! -f "$MERGE_EVAL_LOGFILE" ]; then
+        touch "$MERGE_EVAL_LOGFILE"
+    fi
+    
+    # Run merge and evaluate script
+    python $P/solid_deception/data_generation/merge_and_evaluate_probes.py \
+        --csv1 "$EXPERIMENT_SET_DIRECTORY/iteration_1/munged_data.csv" \
+        --csv2 "$EXPERIMENT_SET_DIRECTORY/iteration_2/munged_data.csv" \
+        --lr1 "$EXPERIMENT_SET_DIRECTORY/iteration_1/lr.pkl" \
+        --lr2 "$EXPERIMENT_SET_DIRECTORY/iteration_2/lr.pkl" \
+        --model_path $BASE_MODEL_PATH \
+        --tokenizer_path $BASE_MODEL_PATH \
+        --output_csv "$EXPERIMENT_SET_DIRECTORY/merged_test_dataset.csv" \
+        --results_csv "$EXPERIMENT_SET_DIRECTORY/evaluation_results.csv" \
+        --layer $LAYER \
+        --max_length $MAX_DETECTOR_SEQ_LENGTH \
+        --run_name $MERGE_EVAL_RUN_NAME \
+        --seed $SEED \
+        --lie_tpr $LIE_TPR \
+        --subsample_dataset $SUBSAMPLE_DATASET \
+        --num_iterations $NUM_ITERATIONS \
+        2>&1 | tee -a $MERGE_EVAL_LOGFILE
+    
+    echo "FINISHED MERGE AND EVALUATE at $(date)" >> $LOGFILE
+    echo "=== Completed Merge and Evaluate Probes ===" >> $LOGFILE
+else
+    echo "Skipping merge and evaluate (only 1 iteration)" >> $LOGFILE
+fi
 
 echo "Iterative SOLiD Training completed at $(date)" >> $LOGFILE
 echo "DONE!" 

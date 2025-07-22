@@ -821,11 +821,12 @@ def main(args):
     print(f"Found {len(df)} entries")
     if args.n_rows is not None:
         print(f"Subsampling to {args.n_rows} entries")
-        df_sample = df.sample(n=args.n_rows, random_state=42)
+        df_sample = df.sample(n=args.n_rows, random_state=42, replace=True)
     else:
         df_sample = df
-    if args.debug_training:
-        df_sample = df.sample(n=3, random_state=42)
+    # Remove debug_training effect on evaluation samples - dataset size should be controlled by debug_frac in data munging
+    # if args.debug_training:
+    #     df_sample = df.sample(n=3, random_state=42)
     df_sample = cast(pd.DataFrame, df_sample)
     # Generate responses for the sampled data
     if policy is not None:

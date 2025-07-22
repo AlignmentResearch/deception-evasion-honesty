@@ -38,7 +38,7 @@ WANDB_PROJECT = os.environ.get("WANDB_PROJECT", "")
 
 @dataclass
 class MySFTScriptArguments(SFTScriptArguments):
-    debug_training: bool = False
+    debug_training: bool = False  # Keep for compatibility but not used
     only_score: bool = False
     do_categorical_labels: bool = False
     do_mlp_head: bool = False
@@ -399,9 +399,10 @@ if __name__ == "__main__":
     expanded_train_data = [item for example in ds["train"] for item in expand_example(example)]
     expanded_test_data = [item for example in ds["test"] for item in expand_example(example)]
 
-    if args.debug_training:  # type: ignore
-        expanded_train_data = expanded_train_data[:100]
-        expanded_test_data = expanded_test_data[:50]
+    # Remove dataset size limitation - dataset size should be controlled by debug_frac in data munging
+    # if args.debug_training:  # type: ignore
+    #     expanded_train_data = expanded_train_data[:100]
+    #     expanded_test_data = expanded_test_data[:50]
 
     # We add a couple of 'null' responses with reward equal to null_example_reward, to show the
     # reward model that the response must actually answer the question or get a heavy penalty
