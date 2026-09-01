@@ -10,7 +10,7 @@ dependencies = [
     "torchvision",
     "typeapi==2.1.2",  # needed so that pip does not complain about conflicting reqs
     "wandb",
-    "transformers==4.46",
+    "transformers==5.10.1",
     "bitsandbytes",
     "trl==0.12",
     "scikit-learn",
